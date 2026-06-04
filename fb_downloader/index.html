@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FB Downloader Integration Tester</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f4f7f6;
+            margin: 0;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .tester-container {
+            max-width: 700px;
+            width: 100%;
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .input-section {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            padding-bottom: 20px;
+            border-bottom: 2px solid #eee;
+        }
+        input[type="text"] {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            padding: 12px 24px;
+            background-color: #1877f2;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        button:disabled { background-color: #ccc; }
+
+        /* Mock Article Maker Fields */
+        .field-group {
+            margin-bottom: 20px;
+        }
+        .field-label {
+            display: block;
+            font-weight: bold;
+            font-size: 12px;
+            color: #666;
+            text-transform: uppercase;
+            margin-bottom: 8px;
+        }
+        .field-value {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #fafafa;
+            font-size: 14px;
+            box-sizing: border-box;
+        }
+        textarea.field-value {
+            height: 120px;
+            resize: vertical;
+        }
+        .media-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 8px;
+            padding: 8px;
+            background: #eee;
+            border-radius: 4px;
+            font-size: 12px;
+            word-break: break-all;
+        }
+        .media-thumb {
+            width: 40px;
+            height: 40px;
+            object-fit: cover;
+            border-radius: 4px;
+        }
+        .loader {
+            display: none;
+            text-align: center;
+            font-style: italic;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        .error-msg {
+            color: red;
+            text-align: center;
+            margin-bottom: 15px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="tester-container">
+        <div class="header">
+            <h2>FB Integration Tester</h2>
+            <p>Test how the extracted content fills your "Article Maker" fields.</p>
+        </div>
+
+        <div class="input-section">
+            <input type="text" id="fbUrl" placeholder="Paste Facebook URL here...">
+            <button id="fillBtn">Fill Article</button>
+        </div>
+
+        <div id="loader" class="loader">Extracting content... please wait...</div>
+        <div id="errorMsg" class="error-msg"></div>
+
+        <!-- Mock Article Maker Fields -->
+        <div class="field-group">
+            <label class="field-label">Thumbnail URL</label>
+            <input type="text" id="fieldThumbnail" class="field-value" readonly>
+        </div>
+
+        <div class="field-group">
+            <label class="field-label">Caption</label>
+            <textarea id="fieldCaption" class="field-value" readonly></textarea>
+        </div>
+
+        <div class="field-group">
+            <label class="field-label">Media (Images & Videos)</label>
+            <div id="fieldMedia" style="display: flex; flex-direction: column; gap: 5px;">
+                <p style="color: #999; font-size: 13px;">No media extracted yet.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const fillBtn = document.getElementById('fillBtn');
+        const fbUrlInput = document.getElementById('fbUrl');
+        const loader = document.getElementById('loader');
+        const errorMsg = document.getElementById('errorMsg');
+        
+        const fieldThumbnail = document.getElementById('fieldThumbnail');
+        const fieldCaption = document.getElementById('fieldCaption');
+        const fieldMedia = document.getElementById('fieldMedia');
+
+        fillBtn.addEventListener('click', async () => {
+            const url = fbUrlInput.value.trim();
+            if (!url) {
+                alert('Please enter a URL');
+                return;
+            }
+
+            errorMsg.style.display = 'none';
+            loader.style.display = 'block';
+            fillBtn.disabled = true;
+
+            try {
+                const response = await fetch('http://localhost:8000/import', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                if (!response.ok) {
+                    const errData = await response.json();
+                    throw new Error(errData.detail || 'Failed to extract content');
+                }
+
+                const result = await response.json();
+                const media = Array.isArray(result.media) ? result.media : [];
+                const images = media.filter(item => item.type === 'image').map(item => item.src);
+                const video = media.find(item => item.type === 'video')?.src || null;
+
+                // 1. Fill Caption
+                fieldCaption.value = result.caption || '';
+
+                // 2. Fill Thumbnail (First image)
+                if (images.length > 0) {
+                    fieldThumbnail.value = images[0];
+                } else {
+                    fieldThumbnail.value = '';
+                }
+
+                // 3. Fill Media List
+                fieldMedia.innerHTML = '';
+                const allMedia = [...images, video].filter(Boolean);
+                
+                if (allMedia.length === 0) {
+                    fieldMedia.innerHTML = '<p style="color: #999; font-size: 13px;">No media found.</p>';
+                } else {
+                    allMedia.forEach(mediaUrl => {
+                        const item = document.createElement('div');
+                        item.className = 'media-item';
+                        
+                        const isVideo = mediaUrl.includes('mp4') || mediaUrl.includes('video');
+                        const thumb = isVideo 
+                            ? '<span style="font-size: 10px; background: #ddd; padding: 2px 5px; border-radius: 3px;">VIDEO</span>'
+                            : `<img src="${mediaUrl}" class="media-thumb">`;
+                        
+                        item.innerHTML = `${thumb} <span>${mediaUrl}</span>`;
+                        fieldMedia.appendChild(item);
+                    });
+                }
+
+            } catch (error) {
+                errorMsg.textContent = 'Error: ' + error.message;
+                errorMsg.style.display = 'block';
+            } finally {
+                loader.style.display = 'none';
+                fillBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

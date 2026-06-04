@@ -1,0 +1,274 @@
+:root {
+  --glass-bg: rgba(255, 255, 255, 0.9);
+  --glass-border: rgba(255, 255, 255, 0.95);
+  --glass-backdrop: blur(10px) saturate(120%);
+  --glass-radius: 12px;
+  --glass-shadow: 0 6px 18px rgba(11, 18, 32, 0.12);
+  --glass-text: #0b1220;
+
+  /* references to font-family names defined below */
+  --font-main-regular: "main-regular";
+  --font-main-semibold: "main-semibold";
+  --font-main-black: "main-black";
+  --pshs-logo: url("../assets/icons/pshs.png");
+  --shc-logo: url("../assets/icons/shc.png");
+}
+
+/* Use main-regular as the default font across the app */
+html,
+body,
+#root {
+  scroll-behavior: smooth;
+  font-family:
+    var(--font-main-regular),
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    "Helvetica Neue",
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Font-face declarations using `main-*` naming */
+@font-face {
+  font-family: "main-thin";
+  src: url("../assets/fonts/Laro-Thin.ttf") format("truetype");
+  font-weight: 100;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-thin-italic";
+  src: url("../assets/fonts/Laro-ThinItalic.ttf") format("truetype");
+  font-weight: 100;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-extralight";
+  src: url("../assets/fonts/Laro-ExtraLight.ttf") format("truetype");
+  font-weight: 200;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-extralight-italic";
+  src: url("../assets/fonts/Laro-ExtraLightItalic.ttf") format("truetype");
+  font-weight: 200;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-light";
+  src: url("../assets/fonts/Laro-Light.ttf") format("truetype");
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-light-italic";
+  src: url("../assets/fonts/Laro-LightItalic.ttf") format("truetype");
+  font-weight: 300;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-regular";
+  src: url("../assets/fonts/Laro-Regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-regular-italic";
+  src: url("../assets/fonts/Laro-RegularItalic.ttf") format("truetype");
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-medium";
+  src: url("../assets/fonts/Laro-Medium.ttf") format("truetype");
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-medium-italic";
+  src: url("../assets/fonts/Laro-MediumItalic.ttf") format("truetype");
+  font-weight: 500;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-semibold";
+  src: url("../assets/fonts/Laro-SemiBold.ttf") format("truetype");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-semibold-italic";
+  src: url("../assets/fonts/Laro-SemiBoldItalic.ttf") format("truetype");
+  font-weight: 600;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-bold";
+  src: url("../assets/fonts/Laro-Bold.ttf") format("truetype");
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-bold-italic";
+  src: url("../assets/fonts/Laro-BoldItalic.ttf") format("truetype");
+  font-weight: 700;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-extrabold";
+  src: url("../assets/fonts/Laro-ExtraBold.ttf") format("truetype");
+  font-weight: 800;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-extrabold-italic";
+  src: url("../assets/fonts/Laro-ExtraBoldItalic.ttf") format("truetype");
+  font-weight: 800;
+  font-style: italic;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-black";
+  src: url("../assets/fonts/Laro-Black.ttf") format("truetype");
+  font-weight: 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "main-black-italic";
+  src: url("../assets/fonts/Laro-BlackItalic.ttf") format("truetype");
+  font-weight: 900;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* Keep this file minimal — only global variables and font-face declarations for Tailwind components */
+
+/* Theme colors */
+:root {
+  --theme-blue: #1e90ff;
+  --theme-red: #ff4d4f;
+  --theme-orange: #ff950f;
+  --theme-violet: #b062ff;
+
+  /* Gallery category colors */
+  --category-all: #64748b;
+  --category-school: #2563eb;
+  --category-shc: #ff950f;
+  --category-student: #f97316;
+  --category-promotions: #dc2626;
+  --category-resources: #16a34a;
+  --category-lost-found: #c084fc;
+
+  /* Gallery pill colors */
+  --pill-glass-bg: rgba(255, 255, 255, 0.18);
+  --pill-glass-border: rgba(255, 255, 255, 0.32);
+  --pill-glass-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --pill-arrow-bg: rgba(255, 255, 255, 0.22);
+  --pill-arrow-border: rgba(255, 255, 255, 0.35);
+
+  /* Gallery overlays/fades */
+  --gallery-hero-overlay: rgba(0, 0, 0, 0.46);
+  --gallery-side-fade-solid: rgba(255, 255, 255, 0.72);
+  --gallery-side-fade-clear: rgba(255, 255, 255, 0);
+
+  /* Card overlays/badges */
+  --card-image-overlay: rgba(0, 0, 0, 0.28);
+  --card-pill-fallback-bg: rgba(255, 255, 255, 0.28);
+  --card-pill-fallback-border: rgba(255, 255, 255, 0.45);
+  --card-pill-text: #ffffff;
+  --card-pill-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+
+  /* Global scrollbar tokens */
+  --scrollbar-size: 8px;
+  --scrollbar-thumb: transparent;
+  --scrollbar-track: transparent;
+  --scrollbar-corner: transparent;
+  --scrollbar-thumb-radius: 999px;
+  --scrollbar-track-radius: 999px;
+  --scrollbar-button-size: 0px;
+}
+
+/* Global scrollbar styling */
+* {
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
+  scrollbar-gutter: auto;
+}
+
+*::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-track-radius);
+}
+
+*::-webkit-scrollbar-track-piece {
+  background: var(--scrollbar-track);
+  border-radius: var(--scrollbar-track-radius);
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: var(--scrollbar-thumb-radius);
+  border: 0 solid transparent;
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-button {
+  width: var(--scrollbar-button-size);
+  height: var(--scrollbar-button-size);
+  display: none;
+}
+
+*::-webkit-scrollbar-corner {
+  background: var(--scrollbar-corner);
+}
+
+/* Theme helper classes to set current color on hover */
+.theme-blue:hover,
+.theme-blue:focus {
+  color: var(--theme-blue);
+}
+.theme-red:hover,
+.theme-red:focus {
+  color: var(--theme-red);
+}
+.theme-orange:hover,
+.theme-orange:focus {
+  color: var(--theme-orange);
+}
+.theme-violet:hover,
+.theme-violet:focus {
+  color: var(--theme-violet);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body,
+  #root {
+    scroll-behavior: auto !important;
+  }
+}

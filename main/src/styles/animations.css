@@ -1,0 +1,76 @@
+:root {
+  --anim-fast: 260ms;
+  --anim-medium: 520ms;
+  --anim-pill-sweep: 560ms;
+  --anim-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes pillClickSweep {
+  0% {
+    transform: translateX(-130%);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.65;
+  }
+  100% {
+    transform: translateX(130%);
+    opacity: 0;
+  }
+}
+
+.pill-sweep {
+  animation: pillClickSweep var(--anim-pill-sweep) ease-out forwards;
+}
+
+@keyframes chevronPopUp {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.chevron-pop-up {
+  animation: chevronPopUp var(--anim-fast) ease-out;
+}
+
+.nav-link {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: inherit;
+  text-decoration: none;
+}
+
+.reveal-on-scroll {
+  opacity: 0;
+  transform: translate3d(0, 18px, 0);
+  will-change: transform, opacity;
+  transition:
+    opacity var(--anim-medium) var(--anim-ease-standard),
+    transform var(--anim-medium) var(--anim-ease-standard);
+}
+
+.reveal-on-scroll.is-visible {
+  opacity: 1;
+  transform: translate3d(0, 0, 0);
+}
+
+.gpu-animate {
+  transform: translateZ(0);
+  will-change: transform;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal-on-scroll {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+    will-change: auto !important;
+  }
+}

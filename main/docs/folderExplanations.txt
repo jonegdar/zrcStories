@@ -1,0 +1,32 @@
+/public
+- Static files that do not go through React (icons, logo, favicon)
+
+/src
+- All actual application logic and UI lives here
+
+/src/assets
+- Images and SVG icons used by components
+
+/src/components
+- Reusable UI building blocks (DO NOT put pages here)
+
+/src/components/common
+- Components used across multiple pages (navbar, footer, cards)
+
+/src/components/layout
+- Structural components that wrap pages (layout, spacing, shared UI)
+
+/src/pages
+- Full pages tied to routes (Home, Gallery, Events, Admin)
+
+/src/data
+- Temporary mock data (later replace with database or CMS)
+
+/src/hooks
+- Custom logic helpers (search, filters, etc.)
+
+/src/styles
+- Global styles that Tailwind doesn’t handle well
+
+/docs
+- Documentation for teammates and grading clarity

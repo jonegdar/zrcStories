@@ -1,0 +1,79 @@
+schoolEventTracker/
+│
+├── public/
+│   └── vite.svg
+│
+├── docs/
+│   ├── fileManagement.txt
+│   └── folderExplanations.txt
+│
+├── src/
+│   ├── assets/
+│   │   ├── fonts/
+│   │   ├── icons/
+│   │   ├── images/
+│   │   └── react.svg
+│   │
+│   ├── components/
+│   │   ├── common/
+│   │   │   ├── ArticleCard.jsx
+│   │   │   ├── Footer.jsx
+│   │   │   ├── MobileMenu.jsx
+│   │   │   ├── Navbar.jsx
+│   │   │   └── SearchBar.jsx
+│   │   ├── layout/
+│   │   │   └── PageLayout.jsx
+│   │   └── responsive/
+│   │       └── Container.jsx
+│   │
+│   ├── core/
+│   │   ├── governance/
+│   │   │   └── ethicsPolicy.js
+│   │   └── scroll/
+│   │       └── ScrollManager.jsx
+│   │
+│   ├── data/
+│   │   ├── articles.generated.json
+│   │   └── articles.js
+│   │
+│   ├── features/
+│   │   ├── admin/
+│   │   │   ├── auth/
+│   │   │   └── components/
+│   │   └── articles/
+│   │       ├── constants/
+│   │       └── domain/
+│   │
+│   ├── pages/
+│   │   ├── admin/
+│   │   │   ├── AdminHome.jsx
+│   │   │   ├── AdminLogin.jsx
+│   │   │   └── ArticleMaker.jsx
+│   │   ├── Article.jsx
+│   │   ├── Events.jsx
+│   │   ├── Gallery.jsx
+│   │   ├── Home.jsx
+│   │   └── SearchResults.jsx
+│   │
+│   ├── styles/
+│   │   ├── animations.css
+│   │   └── themes.css
+│   │
+│   ├── utils/
+│   │   ├── date.js
+│   │   └── search.js
+│   │
+│   ├── App.css
+│   ├── App.jsx
+│   ├── index.css
+│   └── main.jsx
+│
+├── scripts/
+├── .gitignore
+├── eslint.config.js
+├── index.html
+├── package.json
+├── package-lock.json
+├── README.md
+├── vercel.json
+└── vite.config.js
