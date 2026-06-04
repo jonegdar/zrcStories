@@ -1,6 +1,124 @@
 import asyncio
 from playwright.async_api import async_playwright
 import yt_dlp
+import unicodedata
+import re
+
+
+def normalize_unicode_text(text: str) -> str:
+    """
+    Convert mathematical alphanumeric symbols and other Unicode variants to ASCII.
+    Facebook sometimes uses styled Unicode characters that need to be normalized.
+    """
+    if not text:
+        return text
+    
+    result = []
+    for char in text:
+        code = ord(char)
+        
+        # Check if char is in mathematical alphanumeric symbols block (U+1D400-U+1D7FF)
+        if 0x1D400 <= code <= 0x1D7FF:
+            # Try to map back to ASCII
+            # Bold uppercase A-Z: U+1D400-U+1D419
+            if 0x1D400 <= code <= 0x1D419:
+                result.append(chr(ord('A') + (code - 0x1D400)))
+            # Bold lowercase a-z: U+1D41A-U+1D433
+            elif 0x1D41A <= code <= 0x1D433:
+                result.append(chr(ord('a') + (code - 0x1D41A)))
+            # Italic uppercase A-Z: U+1D434-U+1D44D
+            elif 0x1D434 <= code <= 0x1D44D:
+                result.append(chr(ord('A') + (code - 0x1D434)))
+            # Italic lowercase a-z: U+1D44E-U+1D467
+            elif 0x1D44E <= code <= 0x1D467:
+                result.append(chr(ord('a') + (code - 0x1D44E)))
+            # Bold italic uppercase A-Z: U+1D468-U+1D481
+            elif 0x1D468 <= code <= 0x1D481:
+                result.append(chr(ord('A') + (code - 0x1D468)))
+            # Bold italic lowercase a-z: U+1D482-U+1D49B
+            elif 0x1D482 <= code <= 0x1D49B:
+                result.append(chr(ord('a') + (code - 0x1D482)))
+            # Script uppercase A-Z: U+1D49C-U+1D4B5
+            elif 0x1D49C <= code <= 0x1D4B5:
+                result.append(chr(ord('A') + (code - 0x1D49C)))
+            # Script lowercase a-z: U+1D4B6-U+1D4CF
+            elif 0x1D4B6 <= code <= 0x1D4CF:
+                result.append(chr(ord('a') + (code - 0x1D4B6)))
+            # Fraktur uppercase A-Z: U+1D504-U+1D51D
+            elif 0x1D504 <= code <= 0x1D51D:
+                result.append(chr(ord('A') + (code - 0x1D504)))
+            # Fraktur lowercase a-z: U+1D51E-U+1D537
+            elif 0x1D51E <= code <= 0x1D537:
+                result.append(chr(ord('a') + (code - 0x1D51E)))
+            # Double-struck uppercase A-Z: U+1D538-U+1D551
+            elif 0x1D538 <= code <= 0x1D551:
+                result.append(chr(ord('A') + (code - 0x1D538)))
+            # Double-struck lowercase a-z: U+1D552-U+1D56B
+            elif 0x1D552 <= code <= 0x1D56B:
+                result.append(chr(ord('a') + (code - 0x1D552)))
+            # Sans-serif uppercase A-Z: U+1D5A0-U+1D5B9
+            elif 0x1D5A0 <= code <= 0x1D5B9:
+                result.append(chr(ord('A') + (code - 0x1D5A0)))
+            # Sans-serif lowercase a-z: U+1D5BA-U+1D5D3
+            elif 0x1D5BA <= code <= 0x1D5D3:
+                result.append(chr(ord('a') + (code - 0x1D5BA)))
+            # Sans-serif bold uppercase A-Z: U+1D5D4-U+1D5ED
+            elif 0x1D5D4 <= code <= 0x1D5ED:
+                result.append(chr(ord('A') + (code - 0x1D5D4)))
+            # Sans-serif bold lowercase a-z: U+1D5EE-U+1D607
+            elif 0x1D5EE <= code <= 0x1D607:
+                result.append(chr(ord('a') + (code - 0x1D5EE)))
+            # Sans-serif italic uppercase A-Z: U+1D608-U+1D621
+            elif 0x1D608 <= code <= 0x1D621:
+                result.append(chr(ord('A') + (code - 0x1D608)))
+            # Sans-serif italic lowercase a-z: U+1D622-U+1D63B
+            elif 0x1D622 <= code <= 0x1D63B:
+                result.append(chr(ord('a') + (code - 0x1D622)))
+            # Sans-serif bold italic uppercase A-Z: U+1D63C-U+1D655
+            elif 0x1D63C <= code <= 0x1D655:
+                result.append(chr(ord('A') + (code - 0x1D63C)))
+            # Sans-serif bold italic lowercase a-z: U+1D656-U+1D66F
+            elif 0x1D656 <= code <= 0x1D66F:
+                result.append(chr(ord('a') + (code - 0x1D656)))
+            # Monospace uppercase A-Z: U+1D670-U+1D689
+            elif 0x1D670 <= code <= 0x1D689:
+                result.append(chr(ord('A') + (code - 0x1D670)))
+            # Monospace lowercase a-z: U+1D68A-U+1D6A3
+            elif 0x1D68A <= code <= 0x1D6A3:
+                result.append(chr(ord('a') + (code - 0x1D68A)))
+            # Bold digits 0-9: U+1D7CE-U+1D7D7
+            elif 0x1D7CE <= code <= 0x1D7D7:
+                result.append(chr(ord('0') + (code - 0x1D7CE)))
+            # Italic digits 0-9: U+1D7D8-U+1D7E1
+            elif 0x1D7D8 <= code <= 0x1D7E1:
+                result.append(chr(ord('0') + (code - 0x1D7D8)))
+            # Bold italic digits 0-9: U+1D7E2-U+1D7EB
+            elif 0x1D7E2 <= code <= 0x1D7EB:
+                result.append(chr(ord('0') + (code - 0x1D7E2)))
+            # Sans-serif digits 0-9: U+1D7F6-U+1D7FF
+            elif 0x1D7F6 <= code <= 0x1D7FF:
+                result.append(chr(ord('0') + (code - 0x1D7F6)))
+            # Script uppercase A-Z (cursive): U+1D49C-U+1D4B5
+            elif 0x1D49C <= code <= 0x1D4B5:
+                result.append(chr(ord('A') + (code - 0x1D49C)))
+            # Script lowercase a-z (cursive): U+1D4B6-U+1D4CF
+            elif 0x1D4B6 <= code <= 0x1D4CF:
+                result.append(chr(ord('a') + (code - 0x1D4B6)))
+            # Fractur uppercase A-Z: U+1D504-U+1D51D
+            elif 0x1D504 <= code <= 0x1D51D:
+                result.append(chr(ord('A') + (code - 0x1D504)))
+            # Fractur lowercase a-z: U+1D51E-U+1D537
+            elif 0x1D51E <= code <= 0x1D537:
+                result.append(chr(ord('a') + (code - 0x1D51E)))
+            else:
+                # Unknown mathematical symbol or not in our ranges - keep as-is
+                result.append(char)
+        else:
+            # Regular character, keep as-is
+            result.append(char)
+    
+    return ''.join(result)
+
 
 async def extract_fb_content(url: str):
     """
@@ -66,74 +184,100 @@ async def extract_fb_content(url: str):
             
             # Removed early login check to prioritize content extraction
 
-            # Try multiple selectors for text
-            print("DEBUG: Searching for post text...")
-            text_selectors = [
-                '[data-ad-preview="message"]',
-                'div[role="main"]',
-                'div[data-ad-comet-preview="message"]',
-                'div[dir="auto"]',
-                'span[dir="auto"]'
-            ]
+            # Find the main post container (Facebook's post structure)
+            print("DEBUG: Searching for main post container...")
+            post_container = await page.query_selector(
+                'div[data-ad-comet-type="feed"][role="article"],'
+                'div[role="article"],'
+                'div[data-testid="post_container"]'
+            )
+            if not post_container:
+                print("DEBUG: No post container found, trying generic main content...")
+                post_container = await page.query_selector('div[role="main"]')
             
-            for selector in text_selectors:
-                element = await page.query_selector(selector)
-                if element:
-                    # Advanced evaluation to mirror exact visual block formatting
-                    text = await element.evaluate("""
-                        el => {
-                            // 1. Clone to avoid mutating the live page
-                            const clone = el.cloneNode(true);
-                            
-                            // 2. Convert image-emojis to text first
-                            const imgs = clone.querySelectorAll('img');
-                            imgs.forEach(img => {
-                                if (img.alt && img.alt.length < 20) {
-                                    const span = document.createElement('span');
-                                    span.innerText = img.alt;
-                                    img.parentNode.replaceChild(span, img);
-                                }
-                            });
-
-                            // 3. Block-aware extraction
-                            // We iterate through children to preserve paragraph breaks
-                            const blocks = [];
-                            const children = clone.childNodes;
-                            
-                            children.forEach(child => {
-                                if (child.nodeType === Node.TEXT_NODE) {
-                                    const txt = child.textContent.trim();
-                                    if (txt) blocks.push(txt);
-                                } else if (child.nodeType === Node.ELEMENT_NODE) {
-                                    const txt = child.innerText.trim();
-                                    if (txt) blocks.push(txt);
-                                }
-                            });
-
-                            // Join blocks with double newlines to mirror the visual spacing
-                            return blocks.join('\\n\\n').trim();
+            if post_container:
+                print("DEBUG: Post container found. Extracting text...")
+                # Extract text from the post (not comments)
+                text = await post_container.evaluate("""
+                    el => {
+                        // Find the post text section (usually before images)
+                        // Look for divs with dir="auto" that contain substantial text (not just likes/comments)
+                        const textCandidates = el.querySelectorAll('div[dir="auto"]');
+                        
+                        for (let elem of textCandidates) {
+                            const text = elem.innerText.trim();
+                            // Skip empty, very short, or likely metadata/comment text
+                            if (text.length > 20 && !text.match(/^(Like|Comment|Share|replied|tagged|added|with|commented on|reacted)/i)) {
+                                return text;
+                            }
                         }
-                    """)
-                    if text and len(text) > 5:
-                        content["text"] = text
-                        print(f"DEBUG: Text found using selector {selector}")
-                        break
+                        
+                        // Fallback: try to get all text content from post
+                        const allText = el.innerText.trim();
+                        return allText.length > 20 ? allText : '';
+                    }
+                """)
+                
+                if text and len(text) > 10:
+                    content["text"] = normalize_unicode_text(text)
+                    print(f"DEBUG: Text found: {content['text'][:100]}...")
+                else:
+                    print("DEBUG: No substantial text found in post container")
 
-            # Extract images
+            # Extract images from post container
             print("DEBUG: Searching for images...")
             try:
-                # Look for images that are likely part of the post
-                images = await page.query_selector_all('img')
-                for img in images:
+                if post_container:
+                    # Get images within the post container specifically
+                    images = await post_container.query_selector_all('img')
+                else:
+                    images = await page.query_selector_all('img')
+                
+                print(f"DEBUG: Found {len(images)} img elements on page")
+                
+                for i, img in enumerate(images):
                     src = await img.get_attribute('src')
-                    if src and ('scontent' in src or 'fbcdn' in src):
-                        # Avoid small icons/avatars and emojis
-                        if 'static.facebook.com' not in src:
-                            # Check image dimensions to filter out emojis
-                            rect = await img.bounding_box()
-                            if rect and rect['width'] > 50 and rect['height'] > 50:
-                                content["images"].append(src)
-                print(f"DEBUG: Found {len(content['images'])} images.")
+                    alt = await img.get_attribute('alt') or ""
+                    rect = await img.bounding_box()
+                    
+                    # Detailed filtering
+                    if not src:
+                        print(f"DEBUG: Image {i} has no src")
+                        continue
+                    
+                    # Skip if not from Facebook CDN
+                    if not ('scontent' in src or 'fbcdn' in src or 'fbcdn-photos' in src):
+                        print(f"DEBUG: Image {i} not from Facebook CDN: {src[:50]}")
+                        continue
+                    
+                    # Skip static assets and emojis
+                    if 'static.facebook.com' in src or 'emoji' in src.lower():
+                        print(f"DEBUG: Image {i} is static/emoji")
+                        continue
+                    
+                    # Check dimensions (skip small avatars/icons)
+                    if not rect:
+                        print(f"DEBUG: Image {i} has no bounding box")
+                        continue
+                    
+                    width = rect.get('width', 0)
+                    height = rect.get('height', 0)
+                    print(f"DEBUG: Image {i} dimensions: {width}x{height}, alt: {alt[:30]}")
+                    
+                    if width < 80 or height < 80:
+                        print(f"DEBUG: Image {i} too small ({width}x{height}), skipping")
+                        continue
+                    
+                    # Skip profile/avatar images (often square and small-ish)
+                    if width == height and width < 150:
+                        print(f"DEBUG: Image {i} is likely avatar (square {width}x{height})")
+                        continue
+                    
+                    # If we got here, it's likely a real post image
+                    print(f"DEBUG: Image {i} accepted: {width}x{height}")
+                    content["images"].append(src)
+                
+                print(f"DEBUG: Final accepted images: {len(content['images'])}")
             except Exception as e:
                 print(f"DEBUG: Image extraction error: {e}")
 
