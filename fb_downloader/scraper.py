@@ -130,6 +130,8 @@ async def extract_fb_content(url: str):
                     "--disable-dev-shm-usage",
                     "--no-first-run",
                     "--no-default-browser-check",
+                    "--disable-web-security",
+                    "--disable-features=IsolateOrigins,site-per-process",
                 ]
             )
             # Mimic a mobile device more closely for mbasic
@@ -139,6 +141,8 @@ async def extract_fb_content(url: str):
                 extra_http_headers={
                     "Accept-Language": "en-US,en;q=0.9",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+                    "Referer": "https://www.google.com/",
+                    "DNT": "1",
                 }
             )
 
@@ -207,14 +211,16 @@ async def extract_fb_content(url: str):
 
             # Solution #2: Broaden Login/Error Detection
             page_text = await page.inner_text('body')
+            page_text_lower = page_text.lower()
             error_markers = [
-                "Log Into Facebook",
-                "Create a new account",
-                "Something went wrong",
-                "Page not found",
-                "The link you followed may be broken"
+                "log in to facebook",
+                "log into facebook",
+                "create a new account",
+                "something went wrong",
+                "page not found",
+                "the link you followed may be broken"
             ]
-            is_error_page = any(marker in page_text for marker in error_markers)
+            is_error_page = any(marker in page_text_lower for marker in error_markers)
 
             if is_login_wall or is_error_page:
                 print(f"DEBUG: Login wall or error page detected. (Login: {is_login_wall}, Error: {is_error_page})")
