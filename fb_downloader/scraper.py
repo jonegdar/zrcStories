@@ -151,7 +151,23 @@ async def extract_fb_content(url: str):
 
             page = await context.new_page()
 
-            print(f"DEBUG: Navigating to {mbasic_url}...")
+            print(f"DEBUG: Resolving URL to handle share links: {url}...")
+            try:
+                # Step 1: Visit original URL to resolve share/short links
+                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
+                await asyncio.sleep(2)
+                resolved_url = page.url
+                print(f"DEBUG: Resolved URL: {resolved_url}")
+            except Exception as e:
+                print(f"DEBUG: Resolution failed, using original: {e}")
+                resolved_url = url
+
+            # Step 2: Transform the RESOLVED URL to mbasic
+            mbasic_url = resolved_url.replace("www.facebook.com", "mbasic.facebook.com")
+            if "facebook.com" in resolved_url and "mbasic" not in mbasic_url:
+                mbasic_url = resolved_url.replace("facebook.com", "mbasic.facebook.com")
+
+            print(f"DEBUG: Navigating to mbasic URL: {mbasic_url}...")
             try:
                 await page.goto(mbasic_url, wait_until="networkidle", timeout=60000)
             except Exception as e:
