@@ -160,7 +160,14 @@ async def extract_fb_content(url: str):
                     await page.goto(mbasic_resolve_url, wait_until="domcontentloaded", timeout=30000)
                     await asyncio.sleep(2)
                     resolved_url = page.url
-                    print(f"DEBUG: Resolved URL: {resolved_url}")
+
+                    # Solution #3: Validate Share Link Resolution
+                    if "login" in resolved_url or "home.php" in resolved_url:
+                        print(f"DEBUG: Share link resolution redirected to login/home: {resolved_url}")
+                        # We don't raise an error here yet, as the main extraction loop
+                        # will handle the login wall detection.
+                    else:
+                        print(f"DEBUG: Resolved URL: {resolved_url}")
                 except Exception as e:
                     print(f"DEBUG: mbasic resolution failed: {e}")
             else:
@@ -195,10 +202,22 @@ async def extract_fb_content(url: str):
 
             print("DEBUG: Extracting content from mbasic layout...")
 
-            # HARD CHECK: Is this a login page? (Language-agnostic)
+            # HARD CHECK: Is this a login wall or an error page?
             is_login_wall = await page.query_selector('input[type="password"]')
-            if is_login_wall:
-                print("DEBUG: Login wall detected (password field found).")
+
+            # Solution #2: Broaden Login/Error Detection
+            page_text = await page.inner_text('body')
+            error_markers = [
+                "Log Into Facebook",
+                "Create a new account",
+                "Something went wrong",
+                "Page not found",
+                "The link you followed may be broken"
+            ]
+            is_error_page = any(marker in page_text for marker in error_markers)
+
+            if is_login_wall or is_error_page:
+                print(f"DEBUG: Login wall or error page detected. (Login: {is_login_wall}, Error: {is_error_page})")
 
             # 2. Multi-Stage Text Extraction
             best_text = ""
@@ -266,9 +285,12 @@ async def extract_fb_content(url: str):
             print(f"DEBUG: Found {len(content['images'])} images")
 
             # Final validation: If we found a login wall or nothing meaningful, it's an error
-            if is_login_wall or (not content["text"] and not content["images"] and not content["video"]):
-                if is_login_wall:
-                    content["error"] = "Private Post: This content is not public or is blocked by Facebook's bot-protection."
+            if is_login_wall or is_error_page or (not content["text"] and not content["images"] and not content["video"]):
+                if is_login_wall or is_error_page:
+                    if is_error_page and not is_login_wall:
+                        content["error"] = "The link you followed may be broken or the post is no longer available."
+                    else:
+                        content["error"] = "Private Post: This content is not public or is blocked by Facebook's bot-protection."
                 else:
                     content["error"] = "Content not found: The post may be empty or blocked."
 
