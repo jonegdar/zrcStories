@@ -1,5 +1,6 @@
 fastapi
 uvicorn
-playwright
+httpx
+beautifulsoup4
 yt-dlp
 sqlalchemy
