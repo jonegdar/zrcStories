@@ -194,33 +194,56 @@ async def extract_fb_content(url: str):
             print("DEBUG: Extracting content from mbasic layout...")
 
             # HARD CHECK: Is this a login page? (Language-agnostic)
-            # If there's a password input, it's a login wall/trap.
             is_login_wall = await page.query_selector('input[type="password"]')
             if is_login_wall:
                 print("DEBUG: Login wall detected (password field found).")
-                # We don't return immediately yet, but we will prioritize this in the final error check.
 
-            # In mbasic, the post text is often in the div containing the largest amount of text
+            # Improved text extraction: Look for the post content
+            # In mbasic, the post content is usually in a div that isn't part of the global nav/footer
+            # We'll scan for the largest text block but with a much stricter "UI filter"
             text_elements = await page.query_selector_all('div')
             best_text = ""
 
             for el in text_elements:
                 txt = await el.inner_text()
-                if txt and len(txt) > len(best_text):
-                    # Filter out common mbasic nav text and login-page markers
-                    # Added Russian and generic markers to catch the bot-trap
+                if not txt:
+                    continue
+
+                # Remove common UI noise that might be bundled in inner_text()
+                clean_txt = txt.replace('Loading...', '').replace('Cancel', '').strip()
+
+                if len(clean_txt) > len(best_text):
+                    # UI markers that indicate this is a navigation/system block, not a post
                     markers = [
                         "Log Into Facebook", "Create a new account", "Home", "Profile",
-                        "Войти", "Пароль", "Электронный адрес", "Установите Facebook"
+                        "Войти", "Пароль", "Электронный адрес", "Установите Facebook",
+                        "Search", "Settings", "Help", "Terms", "Privacy", "About",
+                        "Language", "Facebook", "Meta", "Forgot password?"
                     ]
+
+                    # If the text is mostly just UI markers or very short, ignore it
                     if not any(marker in txt for marker in markers):
-                        best_text = txt
+                        # Additional check: the text should not be just "Loading" or "Cancel"
+                        if clean_txt and len(clean_txt) > 5:
+                            best_text = clean_txt
 
             if best_text:
                 # Clean up the extracted text
                 lines = best_text.split('\\n')
-                filtered_lines = [l for l in lines if not l.strip().lower() in ['like', 'comment', 'share', 'reply']]
-                content["text"] = normalize_unicode_text('\\n'.join(filtered_lines).strip())
+                # Filter out common FB mbasic interaction buttons and loading artifacts
+                ui_noise = ['like', 'comment', 'share', 'reply', 'loading', 'cancel', 'wait']
+                filtered_lines = [
+                    l for l in lines
+                    if l.strip() and not any(noise in l.strip().lower() for noise in ui_noise)
+                ]
+
+                final_text = normalize_unicode_text('\\n'.join(filtered_lines).strip())
+                # Final sanity check: if the result is just "Loading" or similar, clear it
+                if any(noise in final_text.lower() for noise in ['loading...', 'please wait']):
+                    content["text"] = ""
+                else:
+                    content["text"] = final_text
+
                 print(f"DEBUG: Text extracted ({len(content['text'])} chars)")
 
             # Extract images
@@ -231,9 +254,7 @@ async def extract_fb_content(url: str):
                 if not src or src in seen_src:
                     continue
 
-                # Stricter filter: must be scontent/fbcdn AND NOT a static UI asset
                 if any(domain in src for domain in ['scontent', 'fbcdn']):
-                    # Block static assets, emojis, and the 'z-m-static' bot-trap icons
                     if not any(bad in src.lower() for bad in ['static.facebook.com', 'emoji', 'z-m-static', 'static-assets']):
                         seen_src.add(src)
                         content["images"].append(src)
