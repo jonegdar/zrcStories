@@ -7,8 +7,8 @@ import {
   saveAdminSession,
 } from "./adminAuthStorage";
 
-const ADMIN_USERNAME = "pshs-zrc!";
-const ADMIN_PASSWORD = "articleMaker3000$#@";
+const ADMIN_USERNAME = "123";
+const ADMIN_PASSWORD = "123";
 
 function createSession() {
   const now = Date.now();

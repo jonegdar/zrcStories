@@ -23,11 +23,8 @@ export default function Navbar() {
   const isGallery =
     location.pathname === "/gallery" || location.pathname.startsWith("/articles");
   const isEvents = location.pathname === "/events";
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
-  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
-  const scrolledRef = useRef(false);
+  const [isVisible, setIsVisible] = useState(true);
+  const [lastScrollY, setLastScrollY] = useState(0);
 
   useEffect(() => {
     let frameId = null;
@@ -40,6 +37,16 @@ export default function Navbar() {
           target && typeof target.scrollTop === "number"
             ? target.scrollTop
             : window.scrollY;
+
+        // Hide navbar when scrolling down, show when scrolling up
+        if (y > lastScrollY && y > 100) {
+          setIsVisible(false);
+        } else {
+          setIsVisible(true);
+        }
+
+        setLastScrollY(y);
+
         const nextScrolled = y > 8;
         if (scrolledRef.current !== nextScrolled) {
           scrolledRef.current = nextScrolled;
@@ -53,7 +60,7 @@ export default function Navbar() {
       window.removeEventListener("scroll", onScroll, { capture: true });
       if (frameId !== null) window.cancelAnimationFrame(frameId);
     };
-  }, []);
+  }, [lastScrollY]);
 
   useEffect(() => {
     setMenuOpen(false);
@@ -117,7 +124,9 @@ export default function Navbar() {
         `}
       </style>
       <nav
-        className="fixed left-1/2 -translate-x-1/2 top-3 md:top-[2.5vh] w-[95vw] h-14 md:h-[8.75vh] z-50 flex items-center justify-center pointer-events-auto"
+        className={`fixed left-1/2 -translate-x-1/2 top-3 md:top-[2.5vh] w-[95vw] h-14 md:h-[8.75vh] z-50 flex items-center justify-center pointer-events-auto transition-all duration-300 ease-in-out ${
+          isVisible ? "translate-y-0 opacity-100" : "-translate-y-[120%] opacity-0"
+        }`}
         role="navigation"
         aria-label="Main navigation"
       >

@@ -198,12 +198,11 @@ async def extract_fb_content(url: str):
             current_url = page.url
             print(f"DEBUG: Final URL after navigation: {current_url}")
             
-            # CRITICAL: Check if we got redirected to login page (URL contains login)
+            # Check if we got redirected to login page (URL contains login)
+            # We remove the immediate return here to allow the scraper to try and find content anyway,
+            # as some public posts might still have 'login' in the URL or cause a temporary redirect.
             if "login" in current_url or "/login.php" in current_url:
-                print("DEBUG: URL redirected to login. Post is likely private or blocked.")
-                content["error"] = "Private Post: This content is not public and cannot be downloaded."
-                await browser.close()
-                return content
+                print("DEBUG: URL contains login markers, but proceeding to attempt extraction...")
 
             # Find the main post container
             print("DEBUG: Searching for post content...")
