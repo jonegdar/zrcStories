@@ -321,7 +321,24 @@ async def extract_fb_content(url: str):
 
             # Final validation
             if not content["text"] and not content["images"] and not content["video"]:
-                if "facebook.com/login" in current_url:
+                # Instead of just checking the URL, we check if we are actually on a login page
+                # by looking for common login page elements.
+                is_login_page = False
+                try:
+                    # Check for common login page markers in the HTML
+                    login_markers = await page.evaluate("""
+                        () => {
+                            return document.body.innerText.includes('Log Into Facebook') ||
+                                   document.body.innerText.includes('Create a new account') ||
+                                   document.querySelector('input[name="email"]') !== null;
+                        }
+                    """)
+                    if login_markers:
+                        is_login_page = True
+                except:
+                    pass
+
+                if is_login_page or "facebook.com/login" in current_url:
                     content["error"] = "Private Post: This content is not public and cannot be downloaded."
                 else:
                     content["error"] = "Content not found: The post may be empty or require login to view."
