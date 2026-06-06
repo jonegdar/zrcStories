@@ -141,8 +141,12 @@ async def extract_fb_content(url: str):
             )
             # Mimic a mobile device more closely for mbasic
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 14_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0.3 Mobile/15E148 Safari/604.1",
-                viewport={'width': 375, 'height': 667}
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+                viewport={'width': 375, 'height': 667},
+                extra_http_headers={
+                    "Accept-Language": "en-US,en;q=0.9",
+                    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
+                }
             )
 
             await context.add_init_script("""
@@ -151,23 +155,30 @@ async def extract_fb_content(url: str):
 
             page = await context.new_page()
 
-            print(f"DEBUG: Resolving URL to handle share links: {url}...")
-            try:
-                # Step 1: Visit original URL to resolve share/short links
-                await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(2)
-                resolved_url = page.url
-                print(f"DEBUG: Resolved URL: {resolved_url}")
-            except Exception as e:
-                print(f"DEBUG: Resolution failed, using original: {e}")
-                resolved_url = url
+            # Step 1: Resolve share links using mbasic to avoid the www.facebook.com bot-wall
+            resolved_url = url
+            if "/share/" in url:
+                mbasic_resolve_url = url.replace("www.facebook.com", "mbasic.facebook.com")
+                if "facebook.com" in url and "mbasic" not in mbasic_resolve_url:
+                    mbasic_resolve_url = url.replace("facebook.com", "mbasic.facebook.com")
 
-            # Step 2: Transform the RESOLVED URL to mbasic
+                print(f"DEBUG: Resolving share link via mbasic: {mbasic_resolve_url}...")
+                try:
+                    await page.goto(mbasic_resolve_url, wait_until="domcontentloaded", timeout=30000)
+                    await asyncio.sleep(2)
+                    resolved_url = page.url
+                    print(f"DEBUG: Resolved URL: {resolved_url}")
+                except Exception as e:
+                    print(f"DEBUG: mbasic resolution failed: {e}")
+            else:
+                print(f"DEBUG: Standard URL detected, no resolution needed: {url}")
+
+            # Step 2: Transform the RESOLVED URL to mbasic for extraction
             mbasic_url = resolved_url.replace("www.facebook.com", "mbasic.facebook.com")
             if "facebook.com" in resolved_url and "mbasic" not in mbasic_url:
                 mbasic_url = resolved_url.replace("facebook.com", "mbasic.facebook.com")
 
-            print(f"DEBUG: Navigating to mbasic URL: {mbasic_url}...")
+            print(f"DEBUG: Navigating to mbasic URL for extraction: {mbasic_url}...")
             try:
                 await page.goto(mbasic_url, wait_until="networkidle", timeout=60000)
             except Exception as e:
