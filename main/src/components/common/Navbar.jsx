@@ -25,6 +25,11 @@ export default function Navbar() {
   const isEvents = location.pathname === "/events";
   const [isVisible, setIsVisible] = useState(true);
   const [lastScrollY, setLastScrollY] = useState(0);
+  const [scrolled, setScrolled] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
+  const [mobileSearchQuery, setMobileSearchQuery] = useState("");
+  const scrolledRef = useRef(false);
 
   useEffect(() => {
     let frameId = null;
