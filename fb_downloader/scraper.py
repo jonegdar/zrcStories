@@ -3,7 +3,7 @@ import httpx
 from bs4 import BeautifulSoup
 import yt_dlp
 import unicodedata
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict, Any
 
 def normalize_unicode_text(text: str) -> str:
     """
@@ -83,10 +83,40 @@ def normalize_unicode_text(text: str) -> str:
 
     return ''.join(result)
 
+IDENTITIES = [
+    {
+        "name": "Googlebot",
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+        }
+    },
+    {
+        "name": "Bingbot",
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.bing.com/",
+        }
+    },
+    {
+        "name": "Mobile-iPhone",
+        "headers": {
+            "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Referer": "https://www.google.com/",
+        }
+    }
+]
+
 async def extract_fb_content(url: str):
     """
-    Extracts content from a Facebook post using a Crawler-First approach.
-    Acts as Googlebot to bypass bot-walls and get Meta Tags.
+    Extracts content from a Facebook post using an Identity Rotation strategy.
+    Tries multiple search-engine and mobile identities to bypass shadow-blocking.
     """
     content = {
         "text": "",
@@ -99,7 +129,7 @@ async def extract_fb_content(url: str):
         content["error"] = "Invalid URL: Please provide a valid Facebook link."
         return content
 
-    # 1. Video Extraction via yt-dlp (always the best way for videos)
+    # 1. Video Extraction via yt-dlp
     try:
         ydl_opts = {'quiet': True, 'no_warnings': True, 'format': 'best'}
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -112,60 +142,67 @@ async def extract_fb_content(url: str):
     except Exception:
         pass
 
-    # 2. Crawler-First Extraction (Googlebot identity)
-    # We use a real Googlebot User-Agent
-    googlebot_ua = "Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)"
-    headers = {
-        "User-Agent": googlebot_ua,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.9",
-        "Referer": "https://www.google.com/",
-    }
+    # 2. Identity Rotation Extraction
+    async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        for identity in IDENTITIES:
+            name = identity["name"]
+            headers = identity["headers"]
+            print(f"DEBUG: Attempting extraction with identity: {name}")
 
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-            response = await client.get(url, headers=headers)
+            try:
+                response = await client.get(url, headers=headers)
+                final_url = str(response.url)
 
-            if response.status_code != 200:
-                content["error"] = f"Facebook returned status {response.status_code}. The post might be private."
-                return content
+                if response.status_code != 200:
+                    print(f"DEBUG: {name} failed with status {response.status_code}")
+                    continue
 
-            html = response.text
-            soup = BeautifulSoup(html, 'html.parser')
+                if "login" in final_url.lower() or "checkpoint" in final_url.lower():
+                    print(f"DEBUG: {name} was redirected to login/checkpoint: {final_url}")
+                    continue
 
-            # --- EXTRACTION LOGIC ---
-            # We prioritize OpenGraph (OG) tags as they are designed for crawlers
+                html = response.text
+                soup = BeautifulSoup(html, 'html.parser')
 
-            # A. Caption (og:description)
-            og_desc = soup.find("meta", property="og:description")
-            if og_desc and og_desc.get("content"):
-                text = og_desc.get("content").strip()
-                content["text"] = normalize_unicode_text(text)
+                # Try to find a caption (og:description)
+                og_desc = soup.find("meta", property="og:description")
+                text = ""
+                if og_desc and og_desc.get("content"):
+                    text = og_desc.get("content").strip()
 
-            # B. Image (og:image)
-            og_image = soup.find("meta", property="og:image")
-            if og_image and og_image.get("content"):
-                img_url = og_image.get("content").strip()
-                if img_url:
-                    content["images"].append(img_url)
+                # Try to find the main image (og:image)
+                images = []
+                og_image = soup.find("meta", property="og:image")
+                if og_image and og_image.get("content"):
+                    img_url = og_image.get("content").strip()
+                    if img_url:
+                        images.append(img_url)
 
-            # C. Additional Images (Scanning for scontent/fbcdn)
-            # Crawlers often see a list of images in the HTML
-            all_imgs = soup.find_all("img")
-            for img in all_imgs:
-                src = img.get("src")
-                if src and any(domain in src for domain in ["scontent", "fbcdn"]):
-                    if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
-                        if src not in content["images"]:
-                            content["images"].append(src)
+                # Scan for additional content images
+                all_imgs = soup.find_all("img")
+                for img in all_imgs:
+                    src = img.get("src")
+                    if src and any(domain in src for domain in ["scontent", "fbcdn"]):
+                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
+                            if src not in images:
+                                images.append(src)
 
-            # Validation: If no text and no image was found
-            if not content["text"] and not content["images"] and not content["video"]:
-                content["error"] = "Content not found: The post may be private or empty."
+                # LOGGING: Did this identity actually find anything?
+                if text or images:
+                    print(f"DEBUG: {name} SUCCESS! Found text: {len(text)} chars, images: {len(images)}")
+                    content["text"] = normalize_unicode_text(text)
+                    content["images"] = images
+                    return content
+                else:
+                    print(f"DEBUG: {name} returned 200 but found no content (Shadow-Blocked)")
 
-    except httpx.RequestError as e:
-        content["error"] = f"Network error: {e}"
-    except Exception as e:
-        content["error"] = f"Unexpected error: {e}"
+            except Exception as e:
+                print(f"DEBUG: {name} encountered error: {e}")
+                continue
+
+    # Final Validation: If all identities failed
+    if not content["text"] and not content["images"] and not content["video"]:
+        # Check if we hit a redirect we missed
+        content["error"] = "Content not found: Facebook is blocking the request or the post is private."
 
     return content
