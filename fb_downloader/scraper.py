@@ -120,13 +120,6 @@ async def extract_fb_content(url: str):
     except Exception as e:
         print(f"DEBUG: yt-dlp critical error: {e}")
 
-    # Transform URL to mbasic for text and image extraction
-    mbasic_url = url.replace("www.facebook.com", "mbasic.facebook.com")
-    if "facebook.com" in url and "mbasic" not in url:
-        mbasic_url = url.replace("facebook.com", "mbasic.facebook.com")
-
-    print(f"DEBUG: Using mbasic URL for Playwright: {mbasic_url}")
-
     try:
         print("DEBUG: Launching Playwright browser...")
         async with async_playwright() as p:
@@ -198,9 +191,10 @@ async def extract_fb_content(url: str):
             if is_login_wall:
                 print("DEBUG: Login wall detected (password field found).")
 
+            # Give the page an extra second to ensure content is rendered
+            await asyncio.sleep(1)
+
             # Improved text extraction: Look for the post content
-            # In mbasic, the post content is usually in a div that isn't part of the global nav/footer
-            # We'll scan for the largest text block but with a much stricter "UI filter"
             text_elements = await page.query_selector_all('div')
             best_text = ""
 
@@ -221,11 +215,13 @@ async def extract_fb_content(url: str):
                         "Language", "Facebook", "Meta", "Forgot password?"
                     ]
 
-                    # If the text is mostly just UI markers or very short, ignore it
-                    if not any(marker in txt for marker in markers):
-                        # Additional check: the text should not be just "Loading" or "Cancel"
-                        if clean_txt and len(clean_txt) > 5:
-                            best_text = clean_txt
+                    # SMART FILTER:
+                    # 1. If the text is long (e.g. > 100 chars), it's likely a post, regardless of markers.
+                    # 2. If it's short, it must NOT contain any UI markers.
+                    is_likely_content = len(clean_txt) > 100 or not any(marker in txt for marker in markers)
+
+                    if is_likely_content and len(clean_txt) > 5:
+                        best_text = clean_txt
 
             if best_text:
                 # Clean up the extracted text
