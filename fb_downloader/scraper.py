@@ -182,6 +182,13 @@ async def extract_fb_content(url: str):
 
             print("DEBUG: Extracting content from mbasic layout...")
 
+            # HARD CHECK: Is this a login page? (Language-agnostic)
+            # If there's a password input, it's a login wall/trap.
+            is_login_wall = await page.query_selector('input[type="password"]')
+            if is_login_wall:
+                print("DEBUG: Login wall detected (password field found).")
+                # We don't return immediately yet, but we will prioritize this in the final error check.
+
             # In mbasic, the post text is often in the div containing the largest amount of text
             text_elements = await page.query_selector_all('div')
             best_text = ""
@@ -189,12 +196,17 @@ async def extract_fb_content(url: str):
             for el in text_elements:
                 txt = await el.inner_text()
                 if txt and len(txt) > len(best_text):
-                    # Filter out common mbasic nav text
-                    if not any(marker in txt for marker in ["Log Into Facebook", "Create a new account", "Home", "Profile"]):
+                    # Filter out common mbasic nav text and login-page markers
+                    # Added Russian and generic markers to catch the bot-trap
+                    markers = [
+                        "Log Into Facebook", "Create a new account", "Home", "Profile",
+                        "Войти", "Пароль", "Электронный адрес", "Установите Facebook"
+                    ]
+                    if not any(marker in txt for marker in markers):
                         best_text = txt
 
             if best_text:
-                # Clean up the extracted text (mbasic often includes 'Like' 'Comment' in the text)
+                # Clean up the extracted text
                 lines = best_text.split('\\n')
                 filtered_lines = [l for l in lines if not l.strip().lower() in ['like', 'comment', 'share', 'reply']]
                 content["text"] = normalize_unicode_text('\\n'.join(filtered_lines).strip())
@@ -208,20 +220,19 @@ async def extract_fb_content(url: str):
                 if not src or src in seen_src:
                     continue
 
+                # Stricter filter: must be scontent/fbcdn AND NOT a static UI asset
                 if any(domain in src for domain in ['scontent', 'fbcdn']):
-                    if 'static.facebook.com' not in src and 'emoji' not in src.lower():
+                    # Block static assets, emojis, and the 'z-m-static' bot-trap icons
+                    if not any(bad in src.lower() for bad in ['static.facebook.com', 'emoji', 'z-m-static', 'static-assets']):
                         seen_src.add(src)
                         content["images"].append(src)
 
             print(f"DEBUG: Found {len(content['images'])} images")
 
-            if not content["text"] and not content["images"] and not content["video"]:
-                is_login = await page.evaluate("""
-                    () => document.body.innerText.includes('Log Into Facebook') ||
-                          document.body.innerText.includes('Create a new account')
-                """)
-                if is_login:
-                    content["error"] = "Private Post: This content is not public and cannot be downloaded."
+            # Final validation: If we found a login wall or nothing meaningful, it's an error
+            if is_login_wall or (not content["text"] and not content["images"] and not content["video"]):
+                if is_login_wall:
+                    content["error"] = "Private Post: This content is not public or is blocked by Facebook's bot-protection."
                 else:
                     content["error"] = "Content not found: The post may be empty or blocked."
 
