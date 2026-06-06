@@ -2,189 +2,7 @@ import asyncio
 from playwright.async_api import async_playwright
 import yt_dlp
 import unicodedata
-import html
-import json
 import re
-
-IMAGE_URL_RE = re.compile(r"https:(?:\\?/\\?/)[^\"'<>\\s]+")
-
-UI_TEXT_MARKERS = [
-    "Log Into Facebook", "Create a new account", "Home", "Profile",
-    "Ð’Ð¾Ð¹Ñ‚Ð¸", "ÐŸÐ°Ñ€Ð¾Ð»ÑŒ", "Ð­Ð»ÐµÐºÑ‚Ñ€Ð¾Ð½Ð½Ñ‹Ð¹ Ð°Ð´Ñ€ÐµÑ", "Ð£ÑÑ‚Ð°Ð½Ð¾Ð²Ð¸Ñ‚Ðµ Facebook",
-    "Search", "Settings", "Help", "Terms", "Privacy", "About",
-    "Language", "Facebook", "Meta", "Forgot password?",
-    "Log in", "Sign up", "Email address", "Password",
-]
-
-REJECTED_CAPTION_TEXTS = {
-    "try again",
-    "retry",
-    "loading",
-    "loading...",
-    "please wait",
-}
-
-IMAGE_BLOCKLIST = [
-    "static.facebook.com",
-    "static.xx.fbcdn.net",
-    "emoji",
-    "z-m-static",
-    "static-assets",
-    "rsrc.php",
-]
-
-
-def is_noise_caption(text: str) -> bool:
-    cleaned = re.sub(r"\s+", " ", str(text or "")).strip().lower()
-    if not cleaned:
-        return True
-    if cleaned in REJECTED_CAPTION_TEXTS:
-        return True
-    return any(marker.lower() in cleaned for marker in UI_TEXT_MARKERS)
-
-
-def clean_caption_text(text: str) -> str:
-    if not text:
-        return ""
-
-    text = html.unescape(text)
-    lines = [line.strip() for line in text.replace("\r\n", "\n").split("\n")]
-    ui_noise = ['like', 'comment', 'share', 'reply', 'loading', 'cancel', 'wait', 'try again']
-    filtered_lines = [
-        line for line in lines
-        if line and line.lower() not in ui_noise
-    ]
-    cleaned = normalize_unicode_text("\n".join(filtered_lines).strip())
-    return "" if is_noise_caption(cleaned) else cleaned
-
-
-def is_importable_image_url(src: str) -> bool:
-    lowered = str(src or "").lower()
-    if not src:
-        return False
-    if not any(domain in lowered for domain in ['scontent', 'fbcdn']):
-        return False
-    return not any(bad in lowered for bad in IMAGE_BLOCKLIST)
-
-
-def normalize_image_url(raw_url: str) -> str:
-    value = str(raw_url or "").strip()
-    if not value:
-        return ""
-    if "\\" in value:
-        try:
-            value = json.loads(f'"{value}"')
-        except Exception:
-            value = value.replace("\\/", "/")
-    value = html.unescape(value).replace("\\/", "/").strip()
-    return value if is_importable_image_url(value) else ""
-
-
-def image_key(src: str) -> str:
-    base_url = str(src or "").split("?", 1)[0]
-    return base_url.rsplit("/", 1)[-1] or base_url
-
-
-def add_image_url(images: list[str], src: str) -> None:
-    if not src:
-        return
-    existing_keys = {image_key(item) for item in images}
-    if image_key(src) not in existing_keys:
-        images.append(src)
-
-
-def unique_image_urls(urls: list[str]) -> list[str]:
-    unique = []
-    for url in urls:
-        add_image_url(unique, url)
-    return unique
-
-
-async def first_meta_content(page, selectors: list[str]) -> str:
-    for selector in selectors:
-        try:
-            element = await page.query_selector(selector)
-            if not element:
-                continue
-            content = await element.get_attribute("content")
-            cleaned = clean_caption_text(content or "")
-            if cleaned:
-                return cleaned
-        except Exception:
-            continue
-    return ""
-
-
-async def collect_direct_page_media(page) -> list[str]:
-    urls = []
-
-    for selector in [
-        'meta[property="og:image"]',
-        'meta[name="twitter:image"]',
-        'meta[property="og:image:secure_url"]',
-    ]:
-        try:
-            elements = await page.query_selector_all(selector)
-            for element in elements:
-                normalized = normalize_image_url(await element.get_attribute("content") or "")
-                if normalized:
-                    urls.append(normalized)
-        except Exception:
-            continue
-
-    try:
-        page_html = await page.content()
-        for match in IMAGE_URL_RE.findall(page_html):
-            normalized = normalize_image_url(match)
-            if normalized:
-                urls.append(normalized)
-    except Exception:
-        pass
-
-    return unique_image_urls(urls)
-
-
-async def collect_rendered_page_text(page) -> str:
-    best_text = ""
-    candidates = []
-    try:
-        elements = await page.query_selector_all('[data-ad-preview="message"], div[dir="auto"]')
-        for element in elements:
-            text = clean_caption_text(await element.inner_text() or "")
-            if not text:
-                continue
-            candidates.append(text)
-            if len(text) > len(best_text):
-                best_text = text
-    except Exception:
-        pass
-
-    if best_text and "\n" not in best_text:
-        parts = []
-        for text in candidates:
-            if text == best_text or text not in best_text:
-                continue
-            if any(text in existing or existing in text for existing in parts):
-                continue
-            parts.append(text)
-        parts.sort(key=lambda text: best_text.find(text))
-        if len(parts) > 1 and sum(len(part) for part in parts) >= len(best_text) * 0.8:
-            return "\n".join(parts)
-
-    return best_text
-
-
-async def collect_rendered_page_media(page) -> list[str]:
-    urls = []
-    try:
-        images = await page.query_selector_all("img")
-        for image in images:
-            normalized = normalize_image_url(await image.get_attribute("src") or "")
-            if normalized:
-                urls.append(normalized)
-    except Exception:
-        pass
-    return unique_image_urls(urls)
 
 def normalize_unicode_text(text: str) -> str:
     """
@@ -314,11 +132,10 @@ async def extract_fb_content(url: str):
                     "--no-default-browser-check",
                 ]
             )
-            # Use a regular desktop browser signature so public Open Graph
-            # metadata is available before falling back to mbasic.
+            # Mimic a mobile device more closely for mbasic
             context = await browser.new_context(
-                user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
-                viewport={'width': 1366, 'height': 768},
+                user_agent="Mozilla/5.0 (iPhone; CPU iPhone OS 16_6 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.6 Mobile/15E148 Safari/604.1",
+                viewport={'width': 375, 'height': 667},
                 extra_http_headers={
                     "Accept-Language": "en-US,en;q=0.9",
                     "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3",
@@ -330,42 +147,6 @@ async def extract_fb_content(url: str):
             """)
 
             page = await context.new_page()
-
-            # Facebook's regular page often exposes public Open Graph metadata
-            # even when mbasic redirects headless browsers to a login/retry wall.
-            print("DEBUG: Checking direct Facebook metadata...")
-            try:
-                try:
-                    await page.goto(url, wait_until="networkidle", timeout=60000)
-                except Exception as e:
-                    print(f"DEBUG: Direct networkidle wait failed: {e}")
-                    await page.goto(url, wait_until="domcontentloaded", timeout=30000)
-                await asyncio.sleep(3)
-
-                rendered_text = await collect_rendered_page_text(page)
-                if rendered_text:
-                    content["text"] = rendered_text
-                    print(f"DEBUG: Rendered text extracted ({len(rendered_text)} chars)")
-
-                for src in await collect_rendered_page_media(page):
-                    add_image_url(content["images"], src)
-
-                meta_text = await first_meta_content(page, [
-                    'meta[property="og:description"]',
-                    'meta[name="description"]',
-                    'meta[name="twitter:description"]',
-                ])
-                if meta_text and len(meta_text) > len(content["text"]):
-                    content["text"] = meta_text
-                    print(f"DEBUG: Metadata text extracted ({len(meta_text)} chars)")
-
-                for src in await collect_direct_page_media(page):
-                    add_image_url(content["images"], src)
-
-                if content["images"]:
-                    print(f"DEBUG: Metadata images found: {len(content['images'])}")
-            except Exception as e:
-                print(f"DEBUG: Direct metadata extraction failed: {e}")
 
             # Step 1: Resolve share links using mbasic to avoid the www.facebook.com bot-wall
             resolved_url = url
@@ -397,9 +178,18 @@ async def extract_fb_content(url: str):
                 print(f"DEBUG: Navigation timeout: {e}")
                 await page.goto(mbasic_url, wait_until="domcontentloaded")
 
-            await asyncio.sleep(2)
-            current_url = page.url
+            # --- IMPROVED EXTRACTION LOGIC (Problem #3) ---
 
+            # 1. Smart Wait: Instead of a fixed sleep, wait for the body to have content
+            try:
+                await page.wait_for_function(
+                    "() => document.body.innerText.length > 200 || document.querySelector('input[type=\"password\"]')",
+                    timeout=5000
+                )
+            except Exception:
+                print("DEBUG: Smart wait timed out, proceeding with current state.")
+
+            current_url = page.url
             if "login" in current_url or "/login.php" in current_url:
                 print("DEBUG: mbasic redirected to login. Attempting content extraction anyway...")
 
@@ -410,67 +200,73 @@ async def extract_fb_content(url: str):
             if is_login_wall:
                 print("DEBUG: Login wall detected (password field found).")
 
-            # Give the page an extra second to ensure content is rendered
-            await asyncio.sleep(1)
-
-            # Improved text extraction: Look for the post content
-            text_elements = await page.query_selector_all('div')
+            # 2. Multi-Stage Text Extraction
             best_text = ""
 
-            for el in text_elements:
-                txt = await el.inner_text()
-                if not txt:
-                    continue
+            # Stage A: Try to find content in common mbasic post containers
+            post_selectors = ['div[dir="auto"]', 'div.content', 'div[id*="post"]']
+            for selector in post_selectors:
+                elements = await page.query_selector_all(selector)
+                for el in elements:
+                    txt = await el.inner_text()
+                    if txt and len(txt) > len(best_text):
+                        clean_txt = txt.replace('Loading...', '').replace('Cancel', '').strip()
+                        if len(clean_txt) > len(best_text):
+                            markers = ["Log Into Facebook", "Create a new account", "Home", "Profile"]
+                            if not any(marker in clean_txt for marker in markers):
+                                best_text = clean_txt
 
-                # Remove common UI noise that might be bundled in inner_text()
-                clean_txt = txt.replace('Loading...', '').replace('Cancel', '').strip()
+            # Stage B: Fallback to Meta tags (Facebook often puts the caption in og:description)
+            if not best_text or len(best_text) < 20:
+                try:
+                    meta_desc = await page.get_attribute('meta[property="og:description"]', 'content')
+                    if meta_desc and len(meta_desc) > len(best_text):
+                        best_text = meta_desc
+                except Exception:
+                    pass
 
-                if len(clean_txt) > len(best_text):
-                    # UI markers that indicate this is a navigation/system block, not a post
-                    markers = [
-                        "Log Into Facebook", "Create a new account", "Home", "Profile",
-                        "Войти", "Пароль", "Электронный адрес", "Установите Facebook",
-                        "Search", "Settings", "Help", "Terms", "Privacy", "About",
-                        "Language", "Facebook", "Meta", "Forgot password?"
-                    ]
-
-                    # SMART FILTER:
-                    # 1. If the text is long (e.g. > 100 chars), it's likely a post, regardless of markers.
-                    # 2. If it's short, it must NOT contain any UI markers.
-                    is_likely_content = len(clean_txt) > 100 or not any(marker in txt for marker in markers)
-
-                    if is_likely_content and len(clean_txt) > 5:
-                        best_text = clean_txt
+            # Stage C: Final Fallback - the "Largest Block" Heuristic (refined)
+            if not best_text or len(best_text) < 20:
+                text_elements = await page.query_selector_all('div')
+                for el in text_elements:
+                    txt = await el.inner_text()
+                    if not txt: continue
+                    clean_txt = txt.replace('Loading...', '').replace('Cancel', '').strip()
+                    if len(clean_txt) > len(best_text):
+                        markers = ["Log Into Facebook", "Create a new account", "Home", "Profile", "Search", "Settings"]
+                        is_likely_content = len(clean_txt) > 100 or not any(marker in clean_txt for marker in markers)
+                        if is_likely_content and len(clean_txt) > 5:
+                            best_text = clean_txt
 
             if best_text:
-                # Clean up the extracted text
-                final_text = clean_caption_text(best_text)
-                if final_text and len(final_text) > len(content["text"]):
+                lines = best_text.split('\\n')
+                ui_noise = ['like', 'comment', 'share', 'reply', 'loading', 'cancel', 'wait']
+                filtered_lines = [
+                    l for l in lines
+                    if l.strip() and not any(noise in l.strip().lower() for noise in ui_noise)
+                ]
+                final_text = normalize_unicode_text('\\n'.join(filtered_lines).strip())
+                if any(noise in final_text.lower() for noise in ['loading...', 'please wait']):
+                    content["text"] = ""
+                else:
                     content["text"] = final_text
-
                 print(f"DEBUG: Text extracted ({len(content['text'])} chars)")
 
-            # Extract images
+            # 3. Robust Image Extraction
             images = await page.query_selector_all('img')
             seen_src = set()
             for img in images:
                 src = await img.get_attribute('src')
                 if not src or src in seen_src:
                     continue
-
-                normalized_src = normalize_image_url(src)
-                normalized_key = image_key(normalized_src)
-                if normalized_src and normalized_key not in seen_src:
-                    seen_src.add(normalized_key)
-                    add_image_url(content["images"], normalized_src)
-
+                if any(domain in src for domain in ['scontent', 'fbcdn']):
+                    if not any(bad in src.lower() for bad in ['static.facebook.com', 'emoji', 'z-m-static', 'static-assets']):
+                        seen_src.add(src)
+                        content["images"].append(src)
             print(f"DEBUG: Found {len(content['images'])} images")
 
             # Final validation: If we found a login wall or nothing meaningful, it's an error
-            if is_noise_caption(content["text"]):
-                content["text"] = ""
-
-            if (is_login_wall and not content["text"] and not content["images"] and not content["video"]) or (not content["text"] and not content["images"] and not content["video"]):
+            if is_login_wall or (not content["text"] and not content["images"] and not content["video"]):
                 if is_login_wall:
                     content["error"] = "Private Post: This content is not public or is blocked by Facebook's bot-protection."
                 else:
