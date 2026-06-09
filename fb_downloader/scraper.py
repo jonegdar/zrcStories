@@ -144,6 +144,12 @@ async def extract_fb_content(url: str):
         pass
 
     # 2. Identity Rotation Extraction
+    best_content = {
+        "text": "",
+        "images": [],
+        "error": None
+    }
+
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
         for identity in IDENTITIES:
             name = identity["name"]
@@ -166,81 +172,77 @@ async def extract_fb_content(url: str):
                 soup = BeautifulSoup(html, 'html.parser')
 
                 # --- FULL CONTENT EXTRACTION ---
-
-                # A. Try JSON-LD (The "Holy Grail" for crawlers - often contains the full text)
+                current_text = ""
                 json_ld_scripts = soup.find_all("script", type="application/ld+json")
-                full_text = ""
                 for script in json_ld_scripts:
                     try:
                         data = json.loads(script.string)
-                        # JSON-LD can be a single object or a list
                         if isinstance(data, list):
                             for item in data:
                                 if "articleBody" in item:
-                                    full_text = item["articleBody"]
+                                    current_text = item["articleBody"]
                                     break
                                 if "description" in item:
-                                    full_text = item["description"]
+                                    current_text = item["description"]
                                     break
                         elif isinstance(data, dict):
-                            full_text = data.get("articleBody") or data.get("description", "")
+                            current_text = data.get("articleBody") or data.get("description", "")
                     except Exception:
                         continue
 
-                # B. Fallback to og:description (might be truncated)
-                if not full_text:
+                if not current_text:
                     og_desc = soup.find("meta", property="og:description")
                     if og_desc and og_desc.get("content"):
-                        full_text = og_desc.get("content").strip()
+                        current_text = og_desc.get("content").strip()
 
-                # C. Last resort: Look for common caption containers in the HTML
-                if not full_text or (full_text.endswith("...") and len(full_text) < 100):
-                    # Try to find any div that looks like a post description
+                if not current_text or (current_text.endswith("...") and len(current_text) < 100):
                     desc_div = soup.find("div", {"dir": "auto"})
                     if desc_div:
-                        full_text = desc_div.get_text().strip()
+                        current_text = desc_div.get_text().strip()
 
-                # D. Clean and Normalize Text
-                if full_text:
-                    content["text"] = normalize_unicode_text(full_text)
+                if current_text:
+                    current_text = normalize_unicode_text(current_text)
 
                 # --- ALL MEDIA EXTRACTION ---
-
-                images = []
-                # 1. Try og:image (main image)
+                current_images = []
                 og_image = soup.find("meta", property="og:image")
                 if og_image and og_image.get("content"):
                     img_url = og_image.get("content").strip()
                     if img_url:
-                        images.append(img_url)
+                        current_images.append(img_url)
 
-                # 2. Scan ALL images in the page for content images
-                # We look for images from FB's content CDN
                 all_imgs = soup.find_all("img")
                 for img in all_imgs:
                     src = img.get("src") or img.get("data-src") or img.get("srcset")
                     if not src:
                         continue
-
-                    # Handle srcset (take the first/highest res)
                     if "," in src:
                         src = src.split(",")[0].split(" ")[0]
-
                     if any(domain in src for domain in ["scontent", "fbcdn"]):
                         if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets", "profile"]):
-                            if src not in images:
-                                images.append(src)
+                            if src not in current_images:
+                                current_images.append(src)
 
-                if text_found := content["text"] or images:
-                    print(f"DEBUG: {name} SUCCESS! Text: {len(content['text'])} chars, Images: {len(images)}")
-                    content["images"] = images
-                    return content
+                # --- EVALUATE BEST RESULT ---
+                is_better = (
+                    len(current_images) > len(best_content["images"]) or
+                    (len(current_images) == len(best_content["images"]) and len(current_text) > len(best_content["text"]))
+                )
+
+                if is_better:
+                    print(f"DEBUG: {name} found better content: {len(current_images)} images, {len(current_text)} chars")
+                    best_content["text"] = current_text
+                    best_content["images"] = current_images
                 else:
-                    print(f"DEBUG: {name} returned 200 but found no content (Shadow-Blocked)")
+                    print(f"DEBUG: {name} results were not better than current best")
 
             except Exception as e:
                 print(f"DEBUG: {name} encountered error: {e}")
                 continue
+
+    # Update main content object with the best results found across all identities
+    content["text"] = best_content["text"]
+    content["images"] = best_content["images"]
 
     # Final Validation
     if not content["text"] and not content["images"] and not content["video"]:
