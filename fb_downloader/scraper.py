@@ -166,36 +166,44 @@ async def extract_fb_content(url: str):
                 soup = BeautifulSoup(html, 'html.parser')
 
                 # --- FULL CONTENT EXTRACTION ---
-                current_text = ""
+                candidates = []
+
+                # 1. JSON-LD Extraction
                 json_ld_scripts = soup.find_all("script", type="application/ld+json")
                 for script in json_ld_scripts:
                     try:
                         data = json.loads(script.string)
                         if isinstance(data, list):
                             for item in data:
-                                if "articleBody" in item:
-                                    current_text = item["articleBody"]
-                                    break
-                                if "description" in item:
-                                    current_text = item["description"]
-                                    break
+                                if "articleBody" in item: candidates.append(item["articleBody"])
+                                if "description" in item: candidates.append(item["description"])
                         elif isinstance(data, dict):
-                            current_text = data.get("articleBody") or data.get("description", "")
+                            candidates.append(data.get("articleBody") or data.get("description", ""))
                     except Exception:
                         continue
 
-                if not current_text:
-                    og_desc = soup.find("meta", property="og:description")
-                    if og_desc and og_desc.get("content"):
-                        current_text = og_desc.get("content").strip()
+                # 2. OpenGraph Description
+                og_desc = soup.find("meta", property="og:description")
+                if og_desc and og_desc.get("content"):
+                    candidates.append(og_desc.get("content").strip())
 
-                if not current_text or (current_text.endswith("...") and len(current_text) < 100):
-                    desc_div = soup.find("div", {"dir": "auto"})
-                    if desc_div:
-                        current_text = desc_div.get_text().strip()
+                # 3. Deep Scan for Caption Containers
+                # Facebook often puts the caption in divs with dir="auto"
+                for div in soup.find_all("div", {"dir": "auto"}):
+                    text = div.get_text().strip()
+                    if text:
+                        candidates.append(text)
 
-                if current_text:
-                    content["text"] = normalize_unicode_text(current_text)
+                # Pick the best candidate (longest text that isn't just a UI fragment)
+                best_text = ""
+                for c in candidates:
+                    if not c: continue
+                    # Filter out very short candidates or common UI noise
+                    if len(c) > len(best_text) and "Loading..." not in c:
+                        best_text = c
+
+                if best_text:
+                    content["text"] = normalize_unicode_text(best_text)
 
                 # --- ALL MEDIA EXTRACTION ---
                 images = []
@@ -211,13 +219,8 @@ async def extract_fb_content(url: str):
                     if not src:
                         continue
 
-                    # Solution #2: Pick the LAST element of srcset for highest resolution
-                    if "," in src:
-                        src = src.split(",")[-1].split(" ")[0].strip()
-
                     if any(domain in src for domain in ["scontent", "fbcdn"]):
-                        # Solution #2: Expanded blacklist to avoid profile photos and UI assets
-                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets", "profile", "avatar"]):
+                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
                             if src not in images:
                                 images.append(src)
 
