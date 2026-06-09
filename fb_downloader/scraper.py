@@ -144,12 +144,6 @@ async def extract_fb_content(url: str):
         pass
 
     # 2. Identity Rotation Extraction
-    best_content = {
-        "text": "",
-        "images": [],
-        "error": None
-    }
-
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
         for identity in IDENTITIES:
             name = identity["name"]
@@ -201,48 +195,42 @@ async def extract_fb_content(url: str):
                         current_text = desc_div.get_text().strip()
 
                 if current_text:
-                    current_text = normalize_unicode_text(current_text)
+                    content["text"] = normalize_unicode_text(current_text)
 
                 # --- ALL MEDIA EXTRACTION ---
-                current_images = []
+                images = []
                 og_image = soup.find("meta", property="og:image")
                 if og_image and og_image.get("content"):
                     img_url = og_image.get("content").strip()
                     if img_url:
-                        current_images.append(img_url)
+                        images.append(img_url)
 
                 all_imgs = soup.find_all("img")
                 for img in all_imgs:
                     src = img.get("src") or img.get("data-src") or img.get("srcset")
                     if not src:
                         continue
+
+                    # Solution #2: Pick the LAST element of srcset for highest resolution
                     if "," in src:
-                        src = src.split(",")[0].split(" ")[0]
+                        src = src.split(",")[-1].split(" ")[0].strip()
+
                     if any(domain in src for domain in ["scontent", "fbcdn"]):
-                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets", "profile"]):
-                            if src not in current_images:
-                                current_images.append(src)
+                        # Solution #2: Expanded blacklist to avoid profile photos and UI assets
+                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets", "profile", "avatar"]):
+                            if src not in images:
+                                images.append(src)
 
-                # --- EVALUATE BEST RESULT ---
-                is_better = (
-                    len(current_images) > len(best_content["images"]) or
-                    (len(current_images) == len(best_content["images"]) and len(current_text) > len(best_content["text"]))
-                )
-
-                if is_better:
-                    print(f"DEBUG: {name} found better content: {len(current_images)} images, {len(current_text)} chars")
-                    best_content["text"] = current_text
-                    best_content["images"] = current_images
+                if content["text"] or images:
+                    print(f"DEBUG: {name} SUCCESS! Text: {len(content['text'])} chars, Images: {len(images)}")
+                    content["images"] = images
+                    return content
                 else:
-                    print(f"DEBUG: {name} results were not better than current best")
+                    print(f"DEBUG: {name} returned 200 but found no content (Shadow-Blocked)")
 
             except Exception as e:
                 print(f"DEBUG: {name} encountered error: {e}")
                 continue
-
-    # Update main content object with the best results found across all identities
-    content["text"] = best_content["text"]
-    content["images"] = best_content["images"]
 
     # Final Validation
     if not content["text"] and not content["images"] and not content["video"]:
