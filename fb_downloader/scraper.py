@@ -3,6 +3,7 @@ import httpx
 from bs4 import BeautifulSoup
 import yt_dlp
 import unicodedata
+import json
 from typing import Optional, Tuple, List, Dict, Any
 
 def normalize_unicode_text(text: str) -> str:
@@ -116,7 +117,7 @@ IDENTITIES = [
 async def extract_fb_content(url: str):
     """
     Extracts content from a Facebook post using an Identity Rotation strategy.
-    Tries multiple search-engine and mobile identities to bypass shadow-blocking.
+    Prioritizes full content extraction via JSON-LD and Meta tags.
     """
     content = {
         "text": "",
@@ -164,33 +165,74 @@ async def extract_fb_content(url: str):
                 html = response.text
                 soup = BeautifulSoup(html, 'html.parser')
 
-                # Try to find a caption (og:description)
-                og_desc = soup.find("meta", property="og:description")
-                text = ""
-                if og_desc and og_desc.get("content"):
-                    text = og_desc.get("content").strip()
+                # --- FULL CONTENT EXTRACTION ---
 
-                # Try to find the main image (og:image)
+                # A. Try JSON-LD (The "Holy Grail" for crawlers - often contains the full text)
+                json_ld_scripts = soup.find_all("script", type="application/ld+json")
+                full_text = ""
+                for script in json_ld_scripts:
+                    try:
+                        data = json.loads(script.string)
+                        # JSON-LD can be a single object or a list
+                        if isinstance(data, list):
+                            for item in data:
+                                if "articleBody" in item:
+                                    full_text = item["articleBody"]
+                                    break
+                                if "description" in item:
+                                    full_text = item["description"]
+                                    break
+                        elif isinstance(data, dict):
+                            full_text = data.get("articleBody") or data.get("description", "")
+                    except Exception:
+                        continue
+
+                # B. Fallback to og:description (might be truncated)
+                if not full_text:
+                    og_desc = soup.find("meta", property="og:description")
+                    if og_desc and og_desc.get("content"):
+                        full_text = og_desc.get("content").strip()
+
+                # C. Last resort: Look for common caption containers in the HTML
+                if not full_text or (full_text.endswith("...") and len(full_text) < 100):
+                    # Try to find any div that looks like a post description
+                    desc_div = soup.find("div", {"dir": "auto"})
+                    if desc_div:
+                        full_text = desc_div.get_text().strip()
+
+                # D. Clean and Normalize Text
+                if full_text:
+                    content["text"] = normalize_unicode_text(full_text)
+
+                # --- ALL MEDIA EXTRACTION ---
+
                 images = []
+                # 1. Try og:image (main image)
                 og_image = soup.find("meta", property="og:image")
                 if og_image and og_image.get("content"):
                     img_url = og_image.get("content").strip()
                     if img_url:
                         images.append(img_url)
 
-                # Scan for additional content images
+                # 2. Scan ALL images in the page for content images
+                # We look for images from FB's content CDN
                 all_imgs = soup.find_all("img")
                 for img in all_imgs:
-                    src = img.get("src")
-                    if src and any(domain in src for domain in ["scontent", "fbcdn"]):
-                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
+                    src = img.get("src") or img.get("data-src") or img.get("srcset")
+                    if not src:
+                        continue
+
+                    # Handle srcset (take the first/highest res)
+                    if "," in src:
+                        src = src.split(",")[0].split(" ")[0]
+
+                    if any(domain in src for domain in ["scontent", "fbcdn"]):
+                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets", "profile"]):
                             if src not in images:
                                 images.append(src)
 
-                # LOGGING: Did this identity actually find anything?
-                if text or images:
-                    print(f"DEBUG: {name} SUCCESS! Found text: {len(text)} chars, images: {len(images)}")
-                    content["text"] = normalize_unicode_text(text)
+                if text_found := content["text"] or images:
+                    print(f"DEBUG: {name} SUCCESS! Text: {len(content['text'])} chars, Images: {len(images)}")
                     content["images"] = images
                     return content
                 else:
@@ -200,9 +242,8 @@ async def extract_fb_content(url: str):
                 print(f"DEBUG: {name} encountered error: {e}")
                 continue
 
-    # Final Validation: If all identities failed
+    # Final Validation
     if not content["text"] and not content["images"] and not content["video"]:
-        # Check if we hit a redirect we missed
         content["error"] = "Content not found: Facebook is blocking the request or the post is private."
 
     return content

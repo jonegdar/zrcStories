@@ -4,6 +4,7 @@ import {
   CalendarDays,
   ChevronLeft,
   ChevronRight,
+  Download,
   Facebook,
   Instagram,
   LayoutGrid,
@@ -19,11 +20,11 @@ import { ARTICLE_CATEGORY_META } from "../features/articles/constants/categories
 import { ARTICLE_DETAIL_CATEGORY_ICONS } from "../features/articles/constants/icons";
 import { formatPublishedDate } from "../utils/date";
 
-function MediaFrame({ item, className = "" }) {
+function MediaFrame({ item, className = "", objectFit = "object-cover" }) {
   return (
     <div className={`w-full h-full bg-black/10 ${className}`}>
       {item.type === "video" ? (
-        <video controls preload="metadata" className="w-full h-full object-cover">
+        <video controls preload="metadata" className={`w-full h-full ${objectFit}`}>
           <source src={item.src} type="video/mp4" />
         </video>
       ) : (
@@ -32,7 +33,7 @@ function MediaFrame({ item, className = "" }) {
           alt={item.caption}
           loading="lazy"
           decoding="async"
-          className="w-full h-full object-cover"
+          className={`w-full h-full ${objectFit}`}
         />
       )}
     </div>
@@ -151,14 +152,27 @@ function MediaOverlay({ media, activeIndex, onClose, onPrev, onNext }) {
             {countLabel}
           </span>
 
-          <MediaFrame item={item} className="max-h-[75vh]" />
+          <MediaFrame item={item} className="max-h-[75vh]" objectFit="object-contain" />
           <div
-            className="px-4 py-3 text-white/95 text-sm"
+            className="px-4 py-3 text-white/95 text-sm flex items-center justify-between"
             style={{
               background: "linear-gradient(180deg, rgba(0,0,0,0.08), rgba(0,0,0,0.35))",
             }}
           >
-            {item.caption}
+            <span className="flex-1 mr-4">{item.caption}</span>
+            {item.src && (
+              <a
+                href={item.src}
+                download
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-1.5 px-3 py-1 rounded-lg bg-white/10 hover:bg-white/20 transition-colors duration-200 whitespace-nowrap"
+                title="Download Full Resolution"
+              >
+                <Download size={14} />
+                <span className="hidden sm:inline">Download</span>
+              </a>
+            )}
           </div>
         </div>
 
