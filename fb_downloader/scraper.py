@@ -173,6 +173,10 @@ async def extract_fb_content(url: str):
         pass
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
+        all_images = set()
+        best_text = ""
+        found_video = None
+
         for identity in IDENTITIES:
             name = identity["name"]
             headers = identity["headers"]
@@ -230,20 +234,23 @@ async def extract_fb_content(url: str):
                             except Exception:
                                 continue
 
-                best_text = ""
+                # Find best text for THIS identity
+                current_best_text = ""
                 for c in candidates:
-                    if c and len(c) > len(best_text) and "Loading..." not in c:
-                        best_text = c
-                if best_text:
-                    content["text"] = normalize_unicode_text(best_text)
+                    if c and len(c) > len(current_best_text) and "Loading..." not in c:
+                        current_best_text = c
+
+                if current_best_text:
+                    normalized = normalize_unicode_text(current_best_text)
+                    if len(normalized) > len(best_text):
+                        best_text = normalized
 
                 # --- MEDIA EXTRACTION ---
-                images_set = set()
                 og_image = soup.find("meta", property="og:image")
                 if og_image and og_image.get("content"):
                     img_url = og_image.get("content").strip()
                     if img_url:
-                        images_set.add(upscale_fb_image_url(img_url))
+                        all_images.add(upscale_fb_image_url(img_url))
 
                 all_imgs = soup.find_all("img")
                 for img in all_imgs:
@@ -254,15 +261,19 @@ async def extract_fb_content(url: str):
                         src = src.split(",")[-1].split(" ")[0].strip()
                     if any(domain in src for domain in ["scontent", "fbcdn"]):
                         if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
-                            images_set.add(upscale_fb_image_url(src))
+                            all_images.add(upscale_fb_image_url(src))
 
-                if content["text"] or images_set:
-                    print(f"DEBUG: {name} SUCCESS! Text: {len(content['text'])} chars, Images: {len(images_set)}")
-                    content["images"] = list(images_set)
-                    return content
+                print(f"DEBUG: {name} found text length {len(current_best_text)}, images {len(all_images)}")
+
             except Exception as e:
                 print(f"DEBUG: {name} error: {e}")
                 continue
+
+        # Synthesis
+        content["text"] = best_text
+        content["images"] = list(all_images)
+        if found_video:
+            content["video"] = found_video
 
     if not content["text"] and not content["images"] and not content["video"]:
         content["error"] = "Content not found: Facebook is blocking the request or the post is private."
