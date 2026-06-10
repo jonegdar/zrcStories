@@ -91,10 +91,18 @@ def upscale_fb_image_url(url: str) -> str:
     """
     if not url:
         return url
-    # Pattern 1: /s[width]x[height]/ -> /
+
+    # Pattern 1: /s[width]x[height]/ -> / (Most common)
     upscaled = re.sub(r'/(s?\d+x\d+)/', '/', url)
+
+    # Pattern 2: _s[width]x[height] at the end or before query
     if upscaled == url:
-        upscaled = re.sub(r's\d+x\d+', '', url)
+        upscaled = re.sub(r'_s\d+x\d+', '', url)
+
+    # Pattern 3: Query parameter s=...
+    if upscaled == url:
+        upscaled = re.sub(r's=\d+', 's=2048', url)
+
     return upscaled
 
 def find_text_in_json(data: Any, target_keys: List[str]) -> Optional[str]:
@@ -118,6 +126,32 @@ def find_text_in_json(data: Any, target_keys: List[str]) -> Optional[str]:
                 best_text = found
     return best_text if best_text else None
 
+def find_urls_in_json(data: Any, target_keys: List[str]) -> List[str]:
+    """
+    Recursively searches a JSON-like structure for all strings that look like URLs matching target keys.
+    """
+    urls = []
+    if isinstance(data, dict):
+        for k, v in data.items():
+            if k in target_keys:
+                if isinstance(v, str) and (v.startswith("http") or "cdn" in v):
+                    urls.append(v)
+                elif isinstance(v, list):
+                    for item in v:
+                        if isinstance(item, str) and (item.startswith("http") or "cdn" in item):
+                            urls.append(item)
+                elif isinstance(v, dict):
+                    # Some URLs are nested under keys like 'url' or 'src'
+                    nested_url = find_text_in_json(v, ["url", "src", "link"])
+                    if nested_url:
+                        urls.append(nested_url)
+            elif isinstance(v, (dict, list)):
+                urls.extend(find_urls_in_json(v, target_keys))
+    elif isinstance(data, list):
+        for item in data:
+            urls.extend(find_urls_in_json(item, target_keys))
+    return urls
+
 IDENTITIES = [
     {
         "name": "Googlebot",
@@ -126,6 +160,10 @@ IDENTITIES = [
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.google.com/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Accept-Encoding": "gzip, deflate, br",
         }
     },
     {
@@ -135,6 +173,10 @@ IDENTITIES = [
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.bing.com/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Accept-Encoding": "gzip, deflate, br",
         }
     },
     {
@@ -144,9 +186,38 @@ IDENTITIES = [
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8",
             "Accept-Language": "en-US,en;q=0.9",
             "Referer": "https://www.google.com/",
+            "Sec-Fetch-Dest": "document",
+            "Sec-Fetch-Mode": "navigate",
+            "Sec-Fetch-Site": "none",
+            "Accept-Encoding": "gzip, deflate, br",
         }
     }
 ]
+
+async def is_url_accessible(client, url: str) -> bool:
+    """
+    Performs a HEAD request to verify the URL is accessible and not a login redirect.
+    """
+    if not url:
+        return False
+    try:
+        resp = await client.head(url, follow_redirects=True, timeout=5.0)
+        if resp.status_code >= 400:
+            return False
+        if "login" in str(resp.url).lower() or "checkpoint" in str(resp.url).lower():
+            return False
+        return True
+    except Exception:
+        try:
+            # Fallback to GET if HEAD is not supported
+            resp = await client.get(url, follow_redirects=True, timeout=5.0)
+            if resp.status_code >= 400:
+                return False
+            if "login" in str(resp.url).lower() or "checkpoint" in str(resp.url).lower():
+                return False
+            return True
+        except Exception:
+            return False
 
 async def extract_fb_content(url: str):
     content = {
@@ -173,108 +244,135 @@ async def extract_fb_content(url: str):
         pass
 
     async with httpx.AsyncClient(follow_redirects=True, timeout=15.0) as client:
-        all_images = set()
-        best_text = ""
-        found_video = None
+        # Inner function to perform the multi-identity crawl
+        async def perform_crawl(current_identities):
+            all_images = set()
+            best_text = ""
 
-        for identity in IDENTITIES:
-            name = identity["name"]
-            headers = identity["headers"]
-            print(f"DEBUG: Attempting extraction with identity: {name}")
-
-            try:
-                response = await client.get(url, headers=headers)
-                final_url = str(response.url)
-                if response.status_code != 200:
-                    continue
-                if "login" in final_url.lower() or "checkpoint" in final_url.lower():
-                    continue
-
-                html = response.text
-                soup = BeautifulSoup(html, 'html.parser')
-                candidates = []
-
-                # 1. JSON-LD
-                json_ld_scripts = soup.find_all("script", type="application/ld+json")
-                for script in json_ld_scripts:
-                    try:
-                        data = json.loads(script.string)
-                        if isinstance(data, list):
-                            for item in data:
-                                if "articleBody" in item: candidates.append(item["articleBody"])
-                                if "description" in item: candidates.append(item["description"])
-                        elif isinstance(data, dict):
-                            candidates.append(data.get("articleBody") or data.get("description", ""))
-                    except Exception:
+            for identity in current_identities:
+                name = identity["name"]
+                headers = identity["headers"]
+                try:
+                    response = await client.get(url, headers=headers)
+                    final_url = str(response.url)
+                    if response.status_code != 200 or "login" in final_url.lower() or "checkpoint" in final_url.lower():
                         continue
 
-                # 2. OG Description
-                og_desc = soup.find("meta", property="og:description")
-                if og_desc and og_desc.get("content"):
-                    candidates.append(og_desc.get("content").strip())
+                    html = response.text
+                    soup = BeautifulSoup(html, 'html.parser')
+                    candidates = []
 
-                # 3. dir="auto" divs
-                for div in soup.find_all("div", {"dir": "auto"}):
-                    text = div.get_text().strip()
-                    if text:
-                        candidates.append(text)
+                    # 1. JSON-LD
+                    json_ld_scripts = soup.find_all("script", type="application/ld+json")
+                    for script in json_ld_scripts:
+                        try:
+                            data = json.loads(script.string)
+                            if isinstance(data, list):
+                                for item in data:
+                                    if "articleBody" in item: candidates.append(item["articleBody"])
+                                    if "description" in item: candidates.append(item["description"])
+                            elif isinstance(data, dict):
+                                candidates.append(data.get("articleBody") or data.get("description", ""))
+                        except Exception:
+                            continue
 
-                # 4. Solution C: Script Blob Parsing
-                all_scripts = soup.find_all("script")
-                for script in all_scripts:
-                    if script.string:
-                        # Look for JSON-like objects in JS variables
-                        json_match = re.search(r'(\{.*?\});', script.string)
-                        if json_match:
-                            try:
-                                blob_data = json.loads(json_match.group(1))
-                                found_text = find_text_in_json(blob_data, ["message", "caption", "text", "articleBody"])
-                                if found_text:
-                                    candidates.append(found_text)
-                            except Exception:
-                                continue
+                    # 2. OG Description
+                    og_desc = soup.find("meta", property="og:description")
+                    if og_desc and og_desc.get("content"):
+                        candidates.append(og_desc.get("content").strip())
 
-                # Find best text for THIS identity
-                current_best_text = ""
-                for c in candidates:
-                    if c and len(c) > len(current_best_text) and "Loading..." not in c:
-                        current_best_text = c
+                    # 3. dir="auto" divs
+                    for div in soup.find_all("div", {"dir": "auto"}):
+                        text = div.get_text().strip()
+                        if text:
+                            candidates.append(text)
 
-                if current_best_text:
-                    normalized = normalize_unicode_text(current_best_text)
-                    if len(normalized) > len(best_text):
-                        best_text = normalized
+                    # 4. Solution C/3: Script Blob Parsing & Deep State Harvesting
+                    all_scripts = soup.find_all("script")
+                    for script in all_scripts:
+                        if script.string:
+                            # Try to find JSON objects in JS variables
+                            json_match = re.search(r'(\{.*?\});', script.string)
+                            if json_match:
+                                try:
+                                    blob_data = json.loads(json_match.group(1))
+                                    # Recover text
+                                    found_text = find_text_in_json(blob_data, ["message", "caption", "text", "articleBody"])
+                                    if found_text:
+                                        candidates.append(found_text)
+                                    # Recover media from state
+                                    found_urls = find_urls_in_json(blob_data, ["media", "images", "urls", "attachments"])
+                                    for u in found_urls:
+                                        all_images.add(upscale_fb_image_url(u))
+                                except Exception:
+                                    continue
 
-                # --- MEDIA EXTRACTION ---
-                og_image = soup.find("meta", property="og:image")
-                if og_image and og_image.get("content"):
-                    img_url = og_image.get("content").strip()
-                    if img_url:
-                        all_images.add(upscale_fb_image_url(img_url))
+                    current_best_text = ""
+                    for c in candidates:
+                        if c and len(c) > len(current_best_text) and "Loading..." not in c:
+                            current_best_text = c
 
-                all_imgs = soup.find_all("img")
-                for img in all_imgs:
-                    src = img.get("src") or img.get("data-src") or img.get("srcset")
-                    if not src:
-                        continue
-                    if "," in src:
-                        src = src.split(",")[-1].split(" ")[0].strip()
-                    if any(domain in src for domain in ["scontent", "fbcdn"]):
-                        if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
-                            all_images.add(upscale_fb_image_url(src))
+                    if current_best_text:
+                        normalized = normalize_unicode_text(current_best_text)
+                        if len(normalized) > len(best_text):
+                            best_text = normalized
 
-                print(f"DEBUG: {name} found text length {len(current_best_text)}, images {len(all_images)}")
+                    # --- HTML MEDIA EXTRACTION ---
+                    og_image = soup.find("meta", property="og:image")
+                    if og_image and og_image.get("content"):
+                        img_url = og_image.get("content").strip()
+                        if img_url:
+                            all_images.add(upscale_fb_image_url(img_url))
 
-            except Exception as e:
-                print(f"DEBUG: {name} error: {e}")
-                continue
+                    all_imgs = soup.find_all("img")
+                    for img in all_imgs:
+                        src = img.get("src") or img.get("data-src") or img.get("srcset")
+                        if not src:
+                            continue
+                        if "," in src:
+                            src = src.split(",")[-1].split(" ")[0].strip()
+                        if any(domain in src for domain in ["scontent", "fbcdn"]):
+                            if not any(bad in src.lower() for bad in ["static.facebook.com", "emoji", "z-m-static", "static-assets"]):
+                                all_images.add(upscale_fb_image_url(src))
 
-        # Synthesis
+                except Exception as e:
+                    print(f"DEBUG: {name} error: {e}")
+                    continue
+
+            return best_text, all_images
+
+        # Initial attempt
+        best_text, images_set = await perform_crawl(IDENTITIES)
+
+        # Solution 1: Stability Loop (Auto-Retry on Suspicious Results)
+        # If text is very short and few images were found, try one more time with jitter.
+        if (len(best_text) < 20 and len(images_set) < 1):
+            print("DEBUG: Suspicious result detected. Performing stability retry...")
+            await asyncio.sleep(2) # Jitter
+
+            # Shuffle identities for the retry
+            import random
+            shuffled_identities = list(IDENTITIES)
+            random.shuffle(shuffled_identities)
+
+            retry_text, retry_images = await perform_crawl(shuffled_identities)
+
+            # Take the better of the two
+            if len(retry_text) > len(best_text):
+                best_text = retry_text
+            if len(retry_images) > len(images_set):
+                images_set = retry_images
+
+        # Solution 5: Quality Guard (Verify accessible URLs)
+        verified_images = []
+        for img_url in images_set:
+            if await is_url_accessible(client, img_url):
+                verified_images.append(img_url)
+
         content["text"] = best_text
-        content["images"] = list(all_images)
-        if found_video:
-            content["video"] = found_video
+        content["images"] = verified_images
 
     if not content["text"] and not content["images"] and not content["video"]:
         content["error"] = "Content not found: Facebook is blocking the request or the post is private."
+
     return content

@@ -1514,7 +1514,7 @@ export default function ArticleMaker() {
                     type="button"
                     onClick={() => {
                       window.localStorage.removeItem(draftKey);
-                      setDraft(defaultDraft());
+                      setDraft((prev) => ({ ...defaultDraft(), id: prev.id }));
                       setStatus("Draft cleared.");
                     }}
                     className="rounded-full px-4 py-2 text-sm font-semibold border"
