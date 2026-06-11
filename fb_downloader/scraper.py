@@ -7,7 +7,7 @@ import json
 import re
 from typing import Optional, Tuple, List, Dict, Any
 from playwright.async_api import async_playwright
-from playwright_stealth import stealth_async
+from playwright_stealth import stealth
 
 def normalize_unicode_text(text: str) -> str:
     """
@@ -338,7 +338,7 @@ async def extract_fb_content(url: str):
 
                     # Apply stealth to the page
                     page = await context.new_page()
-                    await stealth_async(page)
+                    await stealth(page)
 
                     # Go to URL and wait for network to settle
                     await page.goto(url, wait_until="networkidle", timeout=30000)
