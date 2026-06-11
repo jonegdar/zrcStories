@@ -7,6 +7,7 @@ import json
 import re
 from typing import Optional, Tuple, List, Dict, Any
 from playwright.async_api import async_playwright
+from playwright_stealth import stealth_async
 
 def normalize_unicode_text(text: str) -> str:
     """
@@ -325,14 +326,19 @@ async def extract_fb_content(url: str):
             except Exception:
                 continue
 
-        # Solution 1: Real-Browser Fallback (Playwright)
-        # If results are suspicious (too short text, no images), use a real browser
+        # Solution 1: Real-Browser Fallback (Playwright) with Stealth
         if len(all_text_candidates) == 0 or (max([len(t) for t in all_text_candidates] + [0]) < 20 and not all_image_urls):
             try:
                 async with async_playwright() as p:
                     browser = await p.chromium.launch(headless=True)
-                    context = await browser.new_context(user_agent=IDENTITIES[0]["headers"]["User-Agent"])
+                    context = await browser.new_context(
+                        user_agent=IDENTITIES[0]["headers"]["User-Agent"],
+                        viewport={'width': 1280, 'height': 720}
+                    )
+
+                    # Apply stealth to the page
                     page = await context.new_page()
+                    await stealth_async(page)
 
                     # Go to URL and wait for network to settle
                     await page.goto(url, wait_until="networkidle", timeout=30000)
@@ -345,7 +351,7 @@ async def extract_fb_content(url: str):
 
                     await browser.close()
             except Exception as e:
-                print(f"DEBUG: Playwright error: {e}")
+                print(f"DEBUG: Playwright Stealth error: {e}")
 
         # Determine the best text from the union of all candidates
         best_text = ""
