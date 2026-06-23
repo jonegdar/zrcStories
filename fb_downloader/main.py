@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from scraper import extract_fb_content
+from scraper import extract_fb_content, is_junk_text
 from database import init_db, get_db, Article
 
 # Initialize database tables
@@ -107,10 +107,10 @@ async def import_content(
         if video:
             media.append(ImportMedia(type="video", src=video, caption=""))
 
-        if not text and not media:
+        if is_junk_text(text) and not media:
             raise HTTPException(
                 status_code=422,
-                detail="No importable caption or media was found. The post may be private, empty, or blocked.",
+                detail="No meaningful content found. The post may be private or contain only UI elements.",
             )
         
         new_article = Article(

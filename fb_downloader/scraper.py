@@ -163,6 +163,32 @@ VIDEO_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+JUNK_TEXT_BLACKLIST = {
+    "facebook", "log in", "sign up", "meta", "join facebook",
+    "find friends", "create account", "forgot password", "loading...",
+    "cookie policy", "terms of service", "privacy policy"
+}
+
+def is_junk_text(text: str) -> bool:
+    """Check if the text consists only of common UI elements or is too short."""
+    if not text:
+        return True
+
+    stripped = " ".join(text.split()).lower()
+    if len(stripped) < 5:
+        return True
+
+    # If the stripped text is exactly or contains only one of the blacklisted terms
+    if stripped in JUNK_TEXT_BLACKLIST:
+        return True
+
+    # If the text is just a combination of blacklisted terms
+    words = stripped.split()
+    if all(word in JUNK_TEXT_BLACKLIST for word in words):
+        return True
+
+    return False
+
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -298,6 +324,12 @@ async def is_url_accessible(client: httpx.AsyncClient, url: str) -> bool:
             response = await client.request(method, clean_url, follow_redirects=True, timeout=5.0)
             if response.status_code >= 400:
                 continue
+
+            # Strict MIME type validation
+            content_type = response.headers.get("Content-Type", "").lower()
+            if not any(mime in content_type for mime in ("image/", "video/", "application/octet-stream")):
+                continue
+
             final_url = str(response.url).lower()
             if "login" in final_url or "checkpoint" in final_url:
                 continue
