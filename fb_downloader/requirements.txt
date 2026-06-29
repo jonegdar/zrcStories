@@ -1,8 +1,5 @@
 fastapi
 uvicorn
 httpx
-beautifulsoup4
 yt-dlp
 sqlalchemy
-playwright
-playwright-stealth
