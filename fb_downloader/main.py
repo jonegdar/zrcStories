@@ -8,7 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from scraper import extract_fb_content, is_junk_text
+from scraper import extract_fb_content, get_apify_config_status, is_junk_text
 from database import init_db, get_db, Article
 
 # Initialize database tables
@@ -76,7 +76,17 @@ app.add_middleware(
 
 @app.get("/health")
 async def health_check():
-    return {"status": "ok", "message": "Server is running"}
+    from scraper import get_apify_actor_candidates, get_apify_api_token
+    
+    return {
+        "status": "ok",
+        "message": "Server is running",
+        "apify": {
+            **get_apify_config_status(),
+            "actorCandidates": get_apify_actor_candidates(),
+            "hasToken": bool(get_apify_api_token()),
+        }
+    }
 
 @app.post("/import")
 async def import_content(
