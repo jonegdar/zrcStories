@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2, Upload, ExternalLink, Eye, X, ChevronLeft, ChevronRight, Download, Loader2 } from "lucide-react";
+import { Plus, Trash2, Upload, ExternalLink, Eye, X, ChevronLeft, ChevronRight, Download, Loader2, Facebook } from "lucide-react";
 import Navbar from "../../components/common/Navbar";
 import Footer from "../../components/common/Footer";
 import homeBg from "../../assets/images/homeBg.jpg";
@@ -137,7 +137,7 @@ function MediaFrame({ item, className = "" }) {
         <video
           controls
           preload="metadata"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         >
           <source src={item.src} type="video/mp4" />
         </video>
@@ -147,7 +147,7 @@ function MediaFrame({ item, className = "" }) {
           alt={item.caption}
           loading="lazy"
           decoding="async"
-          className="w-full h-full object-cover"
+          className="w-full h-full object-contain"
         />
       )}
     </div>
@@ -168,7 +168,7 @@ function MediaCollage({ media, onOpen }) {
             key={item.id}
             type="button"
             onClick={() => onOpen(index)}
-            className="rounded-xl overflow-hidden relative h-40 md:h-44 cursor-pointer"
+            className="rounded-xl overflow-hidden relative aspect-video cursor-pointer"
           >
             <MediaFrame item={item} />
           </button>
@@ -179,7 +179,7 @@ function MediaCollage({ media, onOpen }) {
 
   return (
     <div
-      className="grid grid-cols-2 grid-rows-2 gap-1.5 md:gap-2 h-[130px] sm:h-[170px] md:h-[250px]"
+      className="grid grid-cols-2 grid-rows-2 gap-1.5 md:gap-2 aspect-square max-h-[250px]"
       aria-label="Preview media collage"
     >
       <button
@@ -270,7 +270,7 @@ function MediaOverlay({ media, activeIndex, onClose, onPrev, onNext }) {
             {countLabel}
           </span>
 
-          <MediaFrame item={item} className="max-h-[75vh]" />
+          <MediaFrame item={item} className="max-h-[75vh] max-w-full" />
           <div
             className="px-4 py-3 text-white/95 text-sm"
             style={{
@@ -578,7 +578,15 @@ export default function ArticleMaker() {
   function updateLink(index, value) {
     setDraft((prev) => {
       const links = [...prev.links];
-      links[index] = value;
+      const currentValue = links[index] || "";
+      const isCurrentlyFbLink = String(currentValue).trim().startsWith('[FB]');
+      
+      // Preserve FB prefix if it existed and new value doesn't already have it
+      if (isCurrentlyFbLink && value.trim() && !String(value).trim().startsWith('[FB]')) {
+        links[index] = `[FB] ${value}`;
+      } else {
+        links[index] = value;
+      }
       return { ...prev, links };
     });
   }
@@ -675,15 +683,17 @@ export default function ArticleMaker() {
 
         const links = [...(prev.links || [""])];
         if (finalSourceUrl && !links.some((link) => String(link || "").trim() === finalSourceUrl)) {
+          // Mark FB links with a prefix for UI rendering
+          const fbMarkedLink = `[FB] ${finalSourceUrl}`;
           const emptyIndex = links.findIndex((link) => !String(link || "").trim());
-          if (emptyIndex >= 0) links[emptyIndex] = finalSourceUrl;
-          else links.push(finalSourceUrl);
+          if (emptyIndex >= 0) links[emptyIndex] = fbMarkedLink;
+          else links.push(fbMarkedLink);
         }
 
         return {
           ...prev,
           caption: importedCaption && shouldReplaceCaption ? importedCaption : prev.caption,
-          thumbnail: prev.thumbnail || firstImage?.src || "",
+          thumbnail: prev.thumbnail || firstImage?.src || (importedMedia.find(m => m.type === 'video') ? '[VIDEO]' : "") || "",
           thumbnailUrl: prev.thumbnail ? prev.thumbnailUrl : firstImage?.src || prev.thumbnailUrl,
           links: links.length ? links : [""],
           media: nextMedia,
@@ -901,13 +911,22 @@ export default function ArticleMaker() {
                       border: "1px solid rgba(15, 23, 42, 0.10)",
                     }}
                   >
-                    <img
-                      src={draft.thumbnail || homeBg}
-                      alt="Thumbnail preview"
-                      className="w-full h-full object-cover"
-                      loading="lazy"
-                      decoding="async"
-                    />
+                    {draft.thumbnail === '[VIDEO]' ? (
+                      <div className="w-full h-full flex items-center justify-center bg-black/20">
+                        <div className="text-center">
+                          <div className="text-4xl mb-2">🎬</div>
+                          <div className="text-sm opacity-75">Video thumbnail</div>
+                        </div>
+                      </div>
+                    ) : (
+                      <img
+                        src={draft.thumbnail || homeBg}
+                        alt="Thumbnail preview"
+                        className="w-full h-full object-contain"
+                        loading="lazy"
+                        decoding="async"
+                      />
+                    )}
                     <div className="absolute inset-0 bg-black/25" />
                     <div className="absolute bottom-3 left-3 right-3 flex flex-wrap gap-2 items-center justify-between">
                       <div className="text-white">
@@ -1291,31 +1310,41 @@ export default function ArticleMaker() {
                     Social Media Link(s)
                   </div>
                   <div className="mt-2 space-y-2">
-                    {draft.links.map((value, index) => (
-                      <div key={`link-${index}`} className="flex gap-2">
-                        <div className="flex-1">
-                          <input
-                            value={value}
-                            onChange={(e) => updateLink(index, e.target.value)}
-                            className="am-control w-full rounded-2xl px-4 py-3 outline-none text-sm"
-                            placeholder="https://www.facebook.com/..."
-                          />
+                    {draft.links.map((value, index) => {
+                      const isFbLink = String(value || "").trim().startsWith('[FB]');
+                      const displayValue = isFbLink ? String(value || "").trim().replace('[FB] ', '') : value;
+                      
+                      return (
+                        <div key={`link-${index}`} className="flex gap-2">
+                          <div className="flex-1 relative">
+                            {isFbLink && (
+                              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 pointer-events-none">
+                                <Facebook size={16} />
+                              </div>
+                            )}
+                            <input
+                              value={displayValue}
+                              onChange={(e) => updateLink(index, e.target.value)}
+                              className={`am-control w-full rounded-2xl px-4 py-3 outline-none text-sm ${isFbLink ? 'pl-10' : ''}`}
+                              placeholder="https://www.facebook.com/..."
+                            />
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeLink(index)}
+                            className="w-11 rounded-2xl border flex items-center justify-center"
+                            aria-label="Remove link"
+                            style={{
+                              background: "rgba(255,255,255,0.78)",
+                              borderColor: "rgba(15, 23, 42, 0.12)",
+                              color: "var(--glass-text)",
+                            }}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => removeLink(index)}
-                          className="w-11 rounded-2xl border flex items-center justify-center"
-                          aria-label="Remove link"
-                          style={{
-                            background: "rgba(255,255,255,0.78)",
-                            borderColor: "rgba(15, 23, 42, 0.12)",
-                            color: "var(--glass-text)",
-                          }}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                   <button
                     type="button"

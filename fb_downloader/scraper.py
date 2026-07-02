@@ -96,6 +96,17 @@ def _collect_image_urls(value: Any) -> list[str]:
                 "thumbnail",
                 "thumbnailUrl",
                 "photoUrl",
+                "largeImage",
+                "mediaUrl",
+                "imageUrl",
+                "displayUrl",
+                "originalUrl",
+                "downloadUrl",
+                "contentUrl",
+                "imageUrlHd",
+                "imageUrlSd",
+                "bestImageUrl",
+                "bestQuality",
             ):
                 _add_unique_url(images, node.get(key))
             for key in ("images", "photos", "media"):
@@ -262,7 +273,8 @@ async def extract_fb_content(url: str, strategy: Optional[dict[str, Any]] = None
     # Use the Apify synchronous get-dataset-items endpoint
     payload = {
         "startUrls": [{"url": clean_url}],
-        "resultsLimit": 1,
+        "resultsLimit": 100,  # Increased from 1 to handle posts with many media items
+        "maxItems": 100,  # Alternative parameter some actors use
     }
 
     async with httpx.AsyncClient(timeout=APIFY_TIMEOUT_SECONDS) as client:
