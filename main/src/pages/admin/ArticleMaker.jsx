@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import { Plus, Trash2, Upload, ExternalLink, Eye, X, ChevronLeft, ChevronRight, Download, Loader2, Facebook } from "lucide-react";
+import { Plus, Trash2, Upload, ExternalLink, Eye, X, ChevronLeft, ChevronRight, Download, Loader2, Facebook, Instagram, Youtube, Linkedin, Twitter, ChevronDown } from "lucide-react";
 import Navbar from "../../components/common/Navbar";
 import Footer from "../../components/common/Footer";
 import homeBg from "../../assets/images/homeBg.jpg";
@@ -10,6 +10,35 @@ import { deleteArticleId, upsertCustomArticle } from "../../features/articles/do
 import { tryDeleteRepoArticle, tryUpsertRepoArticle } from "../../features/articles/domain/repoArticlesClient";
 import { deleteAdminDraft, findAdminDraftById, loadAdminDrafts, upsertAdminDraft } from "../../features/articles/domain/adminDraftsStorage";
 import ArticleRepository from "../../features/articles/domain/articleRepository";
+
+const SOCIAL_PLATFORMS = [
+  { id: 'facebook', name: 'Facebook', icon: Facebook, color: '#1877F2', patterns: [/facebook\.com/, /fb\.watch/, /fb\.com/] },
+  { id: 'instagram', name: 'Instagram', icon: Instagram, color: '#E4405F', patterns: [/instagram\.com/, /instagr\.am/] },
+  { id: 'tiktok', name: 'TikTok', icon: null, color: '#000000', patterns: [/tiktok\.com/, /vm\.tiktok\.com/] },
+  { id: 'youtube', name: 'YouTube', icon: Youtube, color: '#FF0000', patterns: [/youtube\.com/, /youtu\.be/] },
+  { id: 'twitter', name: 'Twitter/X', icon: Twitter, color: '#000000', patterns: [/twitter\.com/, /x\.com/] },
+  { id: 'linkedin', name: 'LinkedIn', icon: Linkedin, color: '#0A66C2', patterns: [/linkedin\.com/] },
+  { id: 'none', name: 'Other', icon: ExternalLink, color: '#6B7280', patterns: [] },
+];
+
+function detectPlatform(url) {
+  const normalizedUrl = String(url || "").toLowerCase();
+  for (const platform of SOCIAL_PLATFORMS) {
+    if (platform.id === 'none') continue;
+    for (const pattern of platform.patterns) {
+      if (pattern.test(normalizedUrl)) {
+        return platform.id;
+      }
+    }
+  }
+  return 'none';
+}
+
+function validatePlatformUrl(url, platformId) {
+  if (platformId === 'none') return true;
+  const detectedPlatform = detectPlatform(url);
+  return detectedPlatform === platformId || detectedPlatform === 'none';
+}
 
 function parseAuthors(value) {
   const raw = String(value || "").trim();
@@ -130,14 +159,14 @@ function normalizeImportedMediaItem(item, index) {
   };
 }
 
-function MediaFrame({ item, className = "" }) {
+function MediaFrame({ item, className = "", objectFit = "object-contain" }) {
   return (
     <div className={`w-full h-full bg-black/10 ${className}`}>
       {item.type === "video" ? (
         <video
           controls
           preload="metadata"
-          className="w-full h-full object-contain"
+          className={`w-full h-full ${objectFit}`}
         >
           <source src={item.src} type="video/mp4" />
         </video>
@@ -147,14 +176,14 @@ function MediaFrame({ item, className = "" }) {
           alt={item.caption}
           loading="lazy"
           decoding="async"
-          className="w-full h-full object-contain"
+          className={`w-full h-full ${objectFit}`}
         />
       )}
     </div>
   );
 }
 
-function MediaCollage({ media, onOpen }) {
+function MediaCollage({ media, onOpen, objectFit = "object-cover" }) {
   const preview = (media || []).slice(0, 3);
   const remaining = Math.max(0, (media || []).length - 3);
 
@@ -170,7 +199,7 @@ function MediaCollage({ media, onOpen }) {
             onClick={() => onOpen(index)}
             className="rounded-xl overflow-hidden relative aspect-video cursor-pointer"
           >
-            <MediaFrame item={item} />
+            <MediaFrame item={item} objectFit={objectFit} />
           </button>
         ))}
       </div>
@@ -187,7 +216,7 @@ function MediaCollage({ media, onOpen }) {
         onClick={() => onOpen(0)}
         className="row-span-2 rounded-xl overflow-hidden relative cursor-pointer"
       >
-        <MediaFrame item={preview[0]} />
+        <MediaFrame item={preview[0]} objectFit={objectFit} />
       </button>
 
       <button
@@ -195,7 +224,7 @@ function MediaCollage({ media, onOpen }) {
         onClick={() => onOpen(1)}
         className="rounded-xl overflow-hidden relative cursor-pointer"
       >
-        <MediaFrame item={preview[1]} />
+        <MediaFrame item={preview[1]} objectFit={objectFit} />
       </button>
 
       <button
@@ -203,7 +232,7 @@ function MediaCollage({ media, onOpen }) {
         onClick={() => onOpen(2)}
         className="rounded-xl overflow-hidden relative cursor-pointer"
       >
-        <MediaFrame item={preview[2]} />
+        <MediaFrame item={preview[2]} objectFit={objectFit} />
         <div className="absolute inset-0 bg-black/45" />
         <span className="absolute inset-0 flex items-center justify-center text-white text-3xl font-semibold">
           +{remaining}
@@ -270,7 +299,7 @@ function MediaOverlay({ media, activeIndex, onClose, onPrev, onNext }) {
             {countLabel}
           </span>
 
-          <MediaFrame item={item} className="max-h-[75vh] max-w-full" />
+          <MediaFrame item={item} className="max-h-[75vh] max-w-full" key={`${item.id}-${activeIndex}`} />
           <div
             className="px-4 py-3 text-white/95 text-sm"
             style={{
@@ -359,6 +388,9 @@ export default function ArticleMaker() {
   const statusMenuRef = useRef(null);
   const [statusMenuOpen, setStatusMenuOpen] = useState(false);
   const [hoveredStatus, setHoveredStatus] = useState("");
+  const [linkPlatforms, setLinkPlatforms] = useState(() => 
+    (draft.links || []).map(() => 'none')
+  );
   const editingDraft = useMemo(() => {
     if (!editingId) return null;
     return findAdminDraftById(editingId);
@@ -503,9 +535,18 @@ export default function ArticleMaker() {
             ? existingDraft.links
             : [""],
       });
-      setLoadedFromExisting(true);
-      setStatus("Draft loaded (not published yet).");
-      return;
+    // Initialize platforms for existing links
+    const initialPlatforms = (Array.isArray(existingDraft.links) && existingDraft.links.length 
+      ? existingDraft.links.map(link => {
+          const cleanLink = String(link || "").trim().replace('[FB] ', '');
+          return detectPlatform(cleanLink);
+        })
+      : ['none']
+    );
+    setLinkPlatforms(initialPlatforms);
+    setLoadedFromExisting(true);
+    setStatus("Draft loaded (not published yet).");
+    return;
     }
 
     const existing = ArticleRepository.findById(editingId);
@@ -534,6 +575,15 @@ export default function ArticleMaker() {
       links: Array.isArray(existing.links) && existing.links.length ? existing.links : [""],
       media: Array.isArray(existing.media) ? existing.media : [],
     });
+    // Initialize platforms for existing links
+    const initialPlatforms = (Array.isArray(existing.links) && existing.links.length 
+      ? existing.links.map(link => {
+          const cleanLink = String(link || "").trim().replace('[FB] ', '');
+          return detectPlatform(cleanLink);
+        })
+      : ['none']
+    );
+    setLinkPlatforms(initialPlatforms);
     setLoadedFromExisting(true);
     setStatus("");
   }, [editingId, loadedFromExisting]);
@@ -578,27 +628,24 @@ export default function ArticleMaker() {
   function updateLink(index, value) {
     setDraft((prev) => {
       const links = [...prev.links];
-      const currentValue = links[index] || "";
-      const isCurrentlyFbLink = String(currentValue).trim().startsWith('[FB]');
-      
-      // Preserve FB prefix if it existed and new value doesn't already have it
-      if (isCurrentlyFbLink && value.trim() && !String(value).trim().startsWith('[FB]')) {
-        links[index] = `[FB] ${value}`;
-      } else {
-        links[index] = value;
-      }
+      links[index] = value;
       return { ...prev, links };
     });
   }
 
   function addLink() {
     setDraft((prev) => ({ ...prev, links: [...prev.links, ""] }));
+    setLinkPlatforms((prev) => [...prev, 'none']);
   }
 
   function removeLink(index) {
     setDraft((prev) => {
       const links = prev.links.filter((_, i) => i !== index);
       return { ...prev, links: links.length ? links : [""] };
+    });
+    setLinkPlatforms((prev) => {
+      const platforms = prev.filter((_, i) => i !== index);
+      return platforms.length ? platforms : ['none'];
     });
   }
 
@@ -623,6 +670,90 @@ export default function ArticleMaker() {
       media[index] = { ...media[index], ...patch };
       return { ...prev, media };
     });
+  }
+
+  function PlatformSelector({ selectedPlatform, onPlatformChange, disabled = false }) {
+    const [isOpen, setIsOpen] = useState(false);
+    const selectorRef = useRef(null);
+    
+    const selectedPlatformData = SOCIAL_PLATFORMS.find(p => p.id === selectedPlatform) || SOCIAL_PLATFORMS.find(p => p.id === 'none');
+    const SelectedIcon = selectedPlatformData?.icon;
+    
+    useEffect(() => {
+      function handleClickOutside(event) {
+        if (selectorRef.current && !selectorRef.current.contains(event.target)) {
+          setIsOpen(false);
+        }
+      }
+      
+      if (isOpen) {
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+      }
+    }, [isOpen]);
+    
+    return (
+      <div className="relative" ref={selectorRef}>
+        <button
+          type="button"
+          onClick={() => !disabled && setIsOpen(!isOpen)}
+          disabled={disabled}
+          className="flex items-center gap-2 px-3 py-2.5 rounded-xl border outline-none transition-all duration-200"
+          style={{
+            background: disabled ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.8)',
+            borderColor: `rgba(15, 23, 42, 0.12)`,
+            color: selectedPlatformData?.color || '#6B7280',
+            cursor: disabled ? 'not-allowed' : 'pointer',
+          }}
+        >
+          {SelectedIcon && <SelectedIcon size={16} />}
+          <span className="text-xs font-medium whitespace-nowrap">
+            {selectedPlatformData?.name || 'Other'}
+          </span>
+          {!disabled && (
+            <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          )}
+        </button>
+        
+        {isOpen && !disabled && (
+          <div
+            className="absolute z-30 top-full left-0 mt-2 rounded-xl overflow-hidden shadow-xl"
+            style={{
+              background: 'rgba(255,255,255,0.95)',
+              border: '1px solid rgba(15, 23, 42, 0.12)',
+              backdropFilter: 'blur(12px)',
+              WebkitBackdropFilter: 'blur(12px)',
+              minWidth: '160px',
+            }}
+          >
+            {SOCIAL_PLATFORMS.map((platform) => {
+              const PlatformIcon = platform.icon;
+              const isSelected = platform.id === selectedPlatform;
+              
+              return (
+                <button
+                  key={platform.id}
+                  type="button"
+                  onClick={() => {
+                    onPlatformChange(platform.id);
+                    setIsOpen(false);
+                  }}
+                  className="w-full px-4 py-3 flex items-center gap-3 text-left transition-colors duration-150"
+                  style={{
+                    background: isSelected ? 'color-mix(in srgb, var(--theme-violet) 8%, white)' : 'transparent',
+                    color: platform.color,
+                    borderBottom: '1px solid rgba(15, 23, 42, 0.06)',
+                  }}
+                >
+                  {PlatformIcon && <PlatformIcon size={16} />}
+                  <span className="text-sm font-medium">{platform.name}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
   }
 
   function removeMedia(index) {
@@ -682,12 +813,18 @@ export default function ArticleMaker() {
         ];
 
         const links = [...(prev.links || [""])];
+        const currentPlatforms = [...linkPlatforms];
+        
         if (finalSourceUrl && !links.some((link) => String(link || "").trim() === finalSourceUrl)) {
-          // Mark FB links with a prefix for UI rendering
-          const fbMarkedLink = `[FB] ${finalSourceUrl}`;
           const emptyIndex = links.findIndex((link) => !String(link || "").trim());
-          if (emptyIndex >= 0) links[emptyIndex] = fbMarkedLink;
-          else links.push(fbMarkedLink);
+          if (emptyIndex >= 0) {
+            links[emptyIndex] = finalSourceUrl;
+            currentPlatforms[emptyIndex] = 'facebook';
+          } else {
+            links.push(finalSourceUrl);
+            currentPlatforms.push('facebook');
+          }
+          setLinkPlatforms(currentPlatforms);
         }
 
         return {
@@ -844,26 +981,24 @@ export default function ArticleMaker() {
       <Navbar />
       <main className="min-h-screen pt-28 md:pt-32 pb-8 flex flex-col">
         <div className="w-[92vw] max-w-5xl mx-auto flex-1">
-          <style>
-            {`
-              .am-control {
-                background: rgba(255,255,255,0.84);
-                border: 1.5px solid rgba(255,255,255,0.95);
-                box-shadow: 0 10px 24px rgba(11,18,32,0.10);
-                color: var(--glass-text);
-                transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
-              }
-              .am-control:hover,
-              .am-control:focus {
-                background: rgba(255,255,255,0.90);
-                box-shadow: 0 12px 28px rgba(11,18,32,0.14);
-                transform: translateY(-2px);
-              }
-              .am-control:disabled {
-                transform: none;
-              }
-            `}
-          </style>
+          <style>{`
+            .am-control {
+              background: rgba(255,255,255,0.84);
+              border: 1.5px solid rgba(255,255,255,0.95);
+              box-shadow: 0 10px 24px rgba(11,18,32,0.10);
+              color: var(--glass-text);
+              transition: transform 180ms ease, box-shadow 180ms ease, background 180ms ease;
+            }
+            .am-control:hover,
+            .am-control:focus {
+              background: rgba(255,255,255,0.90);
+              box-shadow: 0 12px 28px rgba(11,18,32,0.14);
+              transform: translateY(-2px);
+            }
+            .am-control:disabled {
+              transform: none;
+            }
+          `}</style>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <div className="text-[10px] tracking-[0.14em] font-semibold opacity-70">
@@ -1311,22 +1446,48 @@ export default function ArticleMaker() {
                   </div>
                   <div className="mt-2 space-y-2">
                     {draft.links.map((value, index) => {
-                      const isFbLink = String(value || "").trim().startsWith('[FB]');
-                      const displayValue = isFbLink ? String(value || "").trim().replace('[FB] ', '') : value;
+                      const currentPlatform = linkPlatforms[index] || 'none';
+                      const platformData = SOCIAL_PLATFORMS.find(p => p.id === currentPlatform) || SOCIAL_PLATFORMS.find(p => p.id === 'none');
+                      const PlatformIcon = platformData?.icon;
                       
                       return (
-                        <div key={`link-${index}`} className="flex gap-2">
+                        <div key={`link-${index}`} className="flex gap-2 items-start">
+                          <PlatformSelector
+                            selectedPlatform={currentPlatform}
+                            onPlatformChange={(newPlatform) => {
+                              const newPlatforms = [...linkPlatforms];
+                              newPlatforms[index] = newPlatform;
+                              setLinkPlatforms(newPlatforms);
+                            }}
+                          />
                           <div className="flex-1 relative">
-                            {isFbLink && (
-                              <div className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-600 pointer-events-none">
-                                <Facebook size={16} />
+                            {PlatformIcon && currentPlatform !== 'none' && (
+                              <div 
+                                className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
+                                style={{ color: platformData.color }}
+                              >
+                                <PlatformIcon size={16} />
                               </div>
                             )}
                             <input
-                              value={displayValue}
-                              onChange={(e) => updateLink(index, e.target.value)}
-                              className={`am-control w-full rounded-2xl px-4 py-3 outline-none text-sm ${isFbLink ? 'pl-10' : ''}`}
-                              placeholder="https://www.facebook.com/..."
+                              value={value}
+                              onChange={(e) => {
+                                let newValue = e.target.value;
+                                // Remove FB prefix if using new system
+                                if (String(newValue).trim().startsWith('[FB]')) {
+                                  newValue = String(newValue).trim().replace('[FB] ', '');
+                                }
+                                updateLink(index, newValue);
+                                // Auto-detect platform on URL change
+                                const detectedPlatform = detectPlatform(newValue);
+                                if (detectedPlatform !== 'none' && detectedPlatform !== currentPlatform) {
+                                  const newPlatforms = [...linkPlatforms];
+                                  newPlatforms[index] = detectedPlatform;
+                                  setLinkPlatforms(newPlatforms);
+                                }
+                              }}
+                              className={`am-control w-full rounded-2xl px-4 py-3 outline-none text-sm ${currentPlatform !== 'none' ? 'pl-10' : ''}`}
+                              placeholder="https://..."
                             />
                           </div>
                           <button
@@ -1363,135 +1524,159 @@ export default function ArticleMaker() {
                     <div className="text-xs font-semibold tracking-wide uppercase opacity-80">
                       Media
                     </div>
+                    {draft.media.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setActiveMediaIndex(0);
+                          setMediaOverlayOpen(true);
+                        }}
+                        className="text-xs underline opacity-70 hover:opacity-100"
+                      >
+                        View all media
+                      </button>
+                    )}
                   </div>
 
                   <div className="mt-3 space-y-3">
                     {draft.media.length === 0 ? (
                       <div className="text-sm opacity-70">No media yet.</div>
                     ) : (
-                      draft.media.map((item, index) => (
-                        <div
-                          key={item.id}
-                          className="rounded-2xl p-4"
-                          style={{
-                            background: "rgba(255,255,255,0.72)",
-                            border: "1px solid rgba(15, 23, 42, 0.10)",
-                          }}
-                        >
-                          <div className="flex items-center justify-between gap-3">
-                            <div className="text-sm font-semibold">Media #{index + 1}</div>
-                            <button
-                              type="button"
-                              onClick={() => removeMedia(index)}
-                              className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold border"
-                              style={{
-                                background: "rgba(255,255,255,0.82)",
-                                borderColor: "rgba(15, 23, 42, 0.12)",
-                                color: "var(--glass-text)",
-                              }}
-                            >
-                              <Trash2 size={14} /> Remove
-                            </button>
-                          </div>
-
-                          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
-                            <div>
-                              <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
-                                Type
-                              </label>
-                              <select
-                                value={item.type}
-                                onChange={(e) => updateMedia(index, { type: e.target.value })}
-                                className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
-                              >
-                                <option value="image">Image</option>
-                                <option value="video">Video</option>
-                              </select>
-                            </div>
-                            <div>
-                              <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
-                                Source URL
-                              </label>
-                              <input
-                                value={item.src}
-                                onChange={(e) => updateMedia(index, { src: e.target.value })}
-                                className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
-                                placeholder="https://..."
-                              />
-                            </div>
-                          </div>
-
-                          <div className="mt-3 flex flex-wrap gap-2 items-center">
-                            <label
-                              className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold cursor-pointer border"
-                              style={{
-                                background: "rgba(255,255,255,0.82)",
-                                borderColor: "rgba(15, 23, 42, 0.12)",
-                                color: "var(--glass-text)",
-                              }}
-                            >
-                              <Upload size={14} />
-                              Upload file
-                              <input
-                                type="file"
-                                accept={item.type === "video" ? "video/*" : "image/*"}
-                                className="hidden"
-                                onChange={async (e) => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  const dataUrl = await fileToDataUrl(file);
-                                  updateMedia(index, { src: dataUrl });
-                                  e.target.value = "";
-                                }}
-                              />
-                            </label>
-                            {item.src?.trim() ? (
-                              <a
-                                href={item.src}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold border"
+                      <>
+                        <MediaCollage media={draft.media} onOpen={(index) => {
+                          setActiveMediaIndex(index);
+                          setMediaOverlayOpen(true);
+                        }} objectFit="object-cover" />
+                        <details className="mt-3">
+                          <summary className="text-xs font-semibold cursor-pointer opacity-70 hover:opacity-100">
+                            Edit media details {draft.media.length > 3 ? `(${draft.media.length} items)` : ''}
+                          </summary>
+                          <div className="mt-3 space-y-3">
+                            {draft.media.map((item, index) => (
+                              <div
+                                key={item.id}
+                                className="rounded-2xl p-4"
                                 style={{
-                                  background: "rgba(255,255,255,0.82)",
-                                  borderColor: "rgba(15, 23, 42, 0.12)",
-                                  color: "var(--glass-text)",
+                                  background: "rgba(255,255,255,0.72)",
+                                  border: "1px solid rgba(15, 23, 42, 0.10)",
                                 }}
                               >
-                                <ExternalLink size={14} />
-                                Open
-                              </a>
-                            ) : null}
-                          </div>
+                                <div className="flex items-center justify-between gap-3">
+                                  <div className="text-sm font-semibold">Media #{index + 1}</div>
+                                  <button
+                                    type="button"
+                                    onClick={() => removeMedia(index)}
+                                    className="inline-flex items-center gap-2 rounded-full px-3 py-2 text-xs font-semibold border"
+                                    style={{
+                                      background: "rgba(255,255,255,0.82)",
+                                      borderColor: "rgba(15, 23, 42, 0.12)",
+                                      color: "var(--glass-text)",
+                                    }}
+                                  >
+                                    <Trash2 size={14} /> Remove
+                                  </button>
+                                </div>
 
-                          <div className="mt-3">
-                            <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
-                              Caption (optional)
-                            </label>
-                            <input
-                              value={item.caption}
-                              onChange={(e) => updateMedia(index, { caption: e.target.value })}
-                              className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
-                              placeholder="Media caption"
-                            />
+                                <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 gap-3">
+                                  <div>
+                                    <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
+                                      Type
+                                    </label>
+                                    <select
+                                      value={item.type}
+                                      onChange={(e) => updateMedia(index, { type: e.target.value })}
+                                      className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
+                                    >
+                                      <option value="image">Image</option>
+                                      <option value="video">Video</option>
+                                    </select>
+                                  </div>
+                                  <div>
+                                    <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
+                                      Source URL
+                                    </label>
+                                    <input
+                                      value={item.src}
+                                      onChange={(e) => updateMedia(index, { src: e.target.value })}
+                                      className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
+                                      placeholder="https://..."
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap gap-2 items-center">
+                                  <label
+                                    className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold cursor-pointer border"
+                                    style={{
+                                      background: "rgba(255,255,255,0.82)",
+                                      borderColor: "rgba(15, 23, 42, 0.12)",
+                                      color: "var(--glass-text)",
+                                    }}
+                                  >
+                                    <Upload size={14} />
+                                    Upload file
+                                    <input
+                                      type="file"
+                                      accept={item.type === "video" ? "video/*" : "image/*"}
+                                      className="hidden"
+                                      onChange={async (e) => {
+                                        const file = e.target.files?.[0];
+                                        if (!file) return;
+                                        const dataUrl = await fileToDataUrl(file);
+                                        updateMedia(index, { src: dataUrl });
+                                        e.target.value = "";
+                                      }}
+                                    />
+                                  </label>
+                                  {item.src?.trim() ? (
+                                    <a
+                                      href={item.src}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold border"
+                                      style={{
+                                        background: "rgba(255,255,255,0.82)",
+                                        borderColor: "rgba(15, 23, 42, 0.12)",
+                                        color: "var(--glass-text)",
+                                      }}
+                                    >
+                                      <ExternalLink size={14} />
+                                      Open
+                                    </a>
+                                  ) : null}
+                                </div>
+
+                                <div className="mt-3">
+                                  <label className="block text-[11px] font-semibold tracking-wide uppercase opacity-80">
+                                    Caption (optional)
+                                  </label>
+                                  <input
+                                    value={item.caption}
+                                    onChange={(e) => updateMedia(index, { caption: e.target.value })}
+                                    className="am-control mt-2 w-full rounded-2xl px-4 py-2.5 outline-none text-sm"
+                                    placeholder="Media caption"
+                                  />
+                                </div>
+                              </div>
+                            ))}
                           </div>
-                        </div>
-                      ))
+                        </details>
+                      </>
                     )}
+                    <button
+                      type="button"
+                      onClick={addMedia}
+                      className="mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold border transition-transform duration-200 hover:-translate-y-0.5"
+                      style={{
+                        background: "rgba(255,255,255,0.78)",
+                        borderColor: "rgba(15, 23, 42, 0.12)",
+                        color: "var(--glass-text)",
+                      }}
+                    >
+                      <Plus size={14} /> Add media
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    onClick={addMedia}
-                    className="mt-3 inline-flex items-center gap-2 rounded-full px-4 py-2 text-xs font-semibold border transition-transform duration-200 hover:-translate-y-0.5"
-                    style={{
-                      background: "rgba(255,255,255,0.78)",
-                      borderColor: "rgba(15, 23, 42, 0.12)",
-                      color: "var(--glass-text)",
-                    }}
-                  >
-                    <Plus size={14} /> Add media
-                  </button>
                 </div>
-              </div>
 
               <div className="mt-6 flex flex-wrap items-center gap-3 justify-between">
                 <div className="text-sm">
@@ -1619,9 +1804,9 @@ export default function ArticleMaker() {
               </p>
             </div>
           </div>
-
         </div>
         <Footer />
+      </div>
       </main>
 
       {previewOpen ? (
@@ -1733,7 +1918,7 @@ export default function ArticleMaker() {
                 {previewArticle.media?.length ? (
                   <div className="mt-7">
                     <div className="text-sm font-semibold mb-3">Media</div>
-                    <MediaCollage media={previewArticle.media} onOpen={openPreviewMedia} />
+                    <MediaCollage media={previewArticle.media} onOpen={openPreviewMedia} objectFit="object-cover" />
                   </div>
                 ) : null}
 
@@ -1741,18 +1926,29 @@ export default function ArticleMaker() {
                   <div className="mt-7">
                     <div className="text-sm font-semibold mb-3">Links</div>
                     <div className="space-y-2">
-                      {previewArticle.links.map((link, index) => (
-                        <a
-                          key={`preview-link-${index + 1}`}
-                          href={link}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-sm underline break-words"
-                          style={{ color: "var(--theme-violet)" }}
-                        >
-                          {link}
-                        </a>
-                      ))}
+                      {previewArticle.links.map((link, index) => {
+                        const platformId = (linkPlatforms[index] || 'none');
+                        const platformData = SOCIAL_PLATFORMS.find(p => p.id === platformId) || SOCIAL_PLATFORMS.find(p => p.id === 'none');
+                        const PlatformIcon = platformData?.icon;
+                        
+                        return (
+                          <a
+                            key={`preview-link-${index + 1}`}
+                            href={link}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-2 text-sm underline break-words"
+                            style={{ color: "var(--theme-violet)" }}
+                          >
+                            {PlatformIcon && platformId !== 'none' && (
+                              <span style={{ color: platformData.color }}>
+                                <PlatformIcon size={14} />
+                              </span>
+                            )}
+                            {link}
+                          </a>
+                        );
+                      })}
                     </div>
                   </div>
                 ) : null}
